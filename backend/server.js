@@ -5,7 +5,7 @@ import authRoutes from "./routes/authRoutes.js";
 import patientRoutes from "./routes/patientRoutes.js";
 
 
-const app = express();
+export const app = express();
 
 const allowedOrigin = "http://localhost:5173";
 
@@ -41,7 +41,6 @@ app.use(cookieParser());
 app.use("/uploads", express.static("uploads"));
 app.use("/auth", authRoutes);
 app.use("/patient", patientRoutes);
-
 app.use((err, req, res, next) => {
   console.error(err.stack);
   res.status(500).json({ message: "Something went wrong!" });

@@ -40,6 +40,7 @@ router.get("/appointments", getAppointments);
 router.post("/appointments", bookAppointment);
 router.put("/appointments/:appointmentId/cancel", cancelAppointment);
 
+
 // Prescriptions
 router.get("/prescriptions", getPrescriptions);
 

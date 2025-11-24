@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { User, FileText, Calendar, Activity, Heart, Pill, Download, Upload, Plus, X, Edit2, Save, AlertCircle } from 'lucide-react';
 
@@ -12,10 +13,13 @@ const api = {
         'Content-Type': 'application/json'
       }
     });
-    if (!response.ok) throw new Error('API request failed');
+    if (!response.ok) {
+      const txt = await response.text().catch(() => '');
+      throw new Error(`${response.status} ${response.statusText} ${txt}`);
+    }
     return response.json();
   },
-  
+
   post: async (endpoint, data, token) => {
     const response = await fetch(`${API_BASE}${endpoint}`, {
       method: 'POST',
@@ -25,10 +29,13 @@ const api = {
       },
       body: JSON.stringify(data)
     });
-    if (!response.ok) throw new Error('API request failed');
+    if (!response.ok) {
+      const txt = await response.text().catch(() => '');
+      throw new Error(`${response.status} ${response.statusText} ${txt}`);
+    }
     return response.json();
   },
-  
+
   put: async (endpoint, data, token) => {
     const response = await fetch(`${API_BASE}${endpoint}`, {
       method: 'PUT',
@@ -38,10 +45,13 @@ const api = {
       },
       body: JSON.stringify(data)
     });
-    if (!response.ok) throw new Error('API request failed');
+    if (!response.ok) {
+      const txt = await response.text().catch(() => '');
+      throw new Error(`${response.status} ${response.statusText} ${txt}`);
+    }
     return response.json();
   },
-  
+
   delete: async (endpoint, token) => {
     const response = await fetch(`${API_BASE}${endpoint}`, {
       method: 'DELETE',
@@ -49,10 +59,13 @@ const api = {
         'Authorization': `Bearer ${token}`
       }
     });
-    if (!response.ok) throw new Error('API request failed');
+    if (!response.ok) {
+      const txt = await response.text().catch(() => '');
+      throw new Error(`${response.status} ${response.statusText} ${txt}`);
+    }
     return response.json();
   },
-  
+
   uploadFile: async (endpoint, formData, token) => {
     const response = await fetch(`${API_BASE}${endpoint}`, {
       method: 'POST',
@@ -61,19 +74,31 @@ const api = {
       },
       body: formData
     });
-    if (!response.ok) throw new Error('Upload failed');
+    if (!response.ok) {
+      const txt = await response.text().catch(() => '');
+      throw new Error(`${response.status} ${response.statusText} ${txt}`);
+    }
     return response.json();
   }
 };
 
 function PatientDashboard() {
   // Get token from localStorage (set during login)
-const [token, setToken] = useState(localStorage.getItem('mv_token') || '');
-  
+  const [token, setToken] = useState(localStorage.getItem('mv_token') || '');
+
   const [activeTab, setActiveTab] = useState('overview');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  
+  // 👇 NEW Appointment Modal States
+const [isAppointmentModalOpen, setIsAppointmentModalOpen] = useState(false);
+
+const [appointmentForm, setAppointmentForm] = useState({
+  date: "",
+  time: "",
+  reason: "",
+});
+
+
   // State for all data
   const [patientData, setPatientData] = useState(null);
   const [medicalRecords, setMedicalRecords] = useState([]);
@@ -81,11 +106,22 @@ const [token, setToken] = useState(localStorage.getItem('mv_token') || '');
   const [prescriptions, setPrescriptions] = useState([]);
   const [vitalSigns, setVitalSigns] = useState([]);
   const [dashboardOverview, setDashboardOverview] = useState(null);
-  
+
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [editedProfile, setEditedProfile] = useState({});
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [uploadForm, setUploadForm] = useState({ title: '', type: '', file: null });
+
+  // New: Add Vitals Modal + form state
+  const [showAddVitalModal, setShowAddVitalModal] = useState(false);
+  const [vitalForm, setVitalForm] = useState({
+    bloodPressure: '',
+    heartRate: '',
+    temperature: '',
+    weight: '',
+    recordedDate: new Date().toISOString().split('T')[0],
+    notes: ''
+  });
 
   // Load initial data
   useEffect(() => {
@@ -97,39 +133,50 @@ const [token, setToken] = useState(localStorage.getItem('mv_token') || '');
   }, [token]);
 
   const loadAllData = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      // Load all data in parallel
-      const [profile, records, apts, presc, vitals, overview] = await Promise.all([
-        api.get('/patient/profile', token),
-        api.get('/patient/medical-records', token),
-        api.get('/patient/appointments', token),
-        api.get('/patient/prescriptions', token),
-        api.get('/patient/vital-signs', token),
-        api.get('/patient/dashboard', token)
-      ]);
-      
-      setPatientData(profile.patient);
-      setEditedProfile(profile.patient);
-      setMedicalRecords(records.records || []);
-      setAppointments(apts.appointments || []);
-      setPrescriptions(presc.prescriptions || []);
-      setVitalSigns(vitals.vitals || []);
-      setDashboardOverview(overview);
-      
-    } catch (err) {
-      console.error('Error loading data:', err);
-      setError('Failed to load data. Please try again.');
-      if (err.message.includes('401') || err.message.includes('403')) {
-        localStorage.removeItem('accessToken');
-        window.location.href = '/login';
-      }
-    } finally {
-      setLoading(false);
+  try {
+    setLoading(true);
+    setError(null);
+
+    // Load all data in parallel
+    const [profile, records, apts, presc, vitals, overview] = await Promise.all([
+      api.get('/patient/profile', token),
+      api.get('/patient/medical-records', token),
+      api.get('/patient/appointments', token),
+      api.get('/patient/prescriptions', token),
+      api.get('/patient/vital-signs', token),
+      api.get('/patient/dashboard', token)
+    ]);
+
+    // Normalize shapes defensively
+    const patient = profile?.patient ?? null;
+    const recordsArr = records?.records ?? (Array.isArray(records) ? records : []);
+    // appointments might come as { appointments: [...] } or directly as an array
+    const apptsArr = apts?.appointments ?? (Array.isArray(apts) ? apts : []);
+    const prescArr = presc?.prescriptions ?? (Array.isArray(presc) ? presc : []);
+    const vitalsArr = vitals?.vitals ?? (Array.isArray(vitals) ? vitals : []);
+    const dashboard = overview ?? null;
+
+    setPatientData(patient);
+    setEditedProfile(patient || {});
+    setMedicalRecords(Array.isArray(recordsArr) ? recordsArr : []);
+    setAppointments(Array.isArray(apptsArr) ? apptsArr : []);
+    setPrescriptions(Array.isArray(prescArr) ? prescArr : []);
+    setVitalSigns(Array.isArray(vitalsArr) ? vitalsArr : []);
+    setDashboardOverview(dashboard);
+
+  } catch (err) {
+    console.error('Error loading data:', err);
+    setError('Failed to load data. Please try again.');
+    // If unauthorized, clear token and redirect
+    if (String(err).includes('401') || String(err).includes('403')) {
+      localStorage.removeItem('mv_token');
+      window.location.href = '/login';
     }
-  };
+  } finally {
+    setLoading(false);
+  }
+};
+
 
   const handleProfileEdit = async () => {
     if (isEditingProfile) {
@@ -142,7 +189,7 @@ const [token, setToken] = useState(localStorage.getItem('mv_token') || '');
           address: editedProfile.address,
           emergencyContact: editedProfile.emergency_contact
         }, token);
-        
+
         setPatientData(editedProfile);
         alert('Profile updated successfully!');
       } catch (err) {
@@ -152,6 +199,31 @@ const [token, setToken] = useState(localStorage.getItem('mv_token') || '');
     }
     setIsEditingProfile(!isEditingProfile);
   };
+  // 👇 NEW APPOINTMENT FORM HANDLERS
+const handleAppointmentChange = (e) => {
+  setAppointmentForm({
+    ...appointmentForm,
+    [e.target.name]: e.target.value,
+  });
+};
+
+const submitAppointment = async () => {
+  try {
+    await api.post('/patient/appointments', appointmentForm, token);
+
+    alert("Appointment booked!");
+    setIsAppointmentModalOpen(false);
+
+    const updated = await api.get('/patient/appointments', token);
+    setAppointments(updated.appointments || []);
+
+    setAppointmentForm({ date: "", time: "", reason: "" });
+
+  } catch (err) {
+    console.error(err);
+    alert("Error booking appointment");
+  }
+};
 
   const handleProfileChange = (e) => {
     setEditedProfile({ ...editedProfile, [e.target.name]: e.target.value });
@@ -162,26 +234,64 @@ const [token, setToken] = useState(localStorage.getItem('mv_token') || '');
       alert('Please fill all fields');
       return;
     }
-    
+
     try {
       const formData = new FormData();
       formData.append('title', uploadForm.title);
       formData.append('type', uploadForm.type);
+      // IMPORTANT: backend expects field name 'file' (multer single('file'))
       formData.append('file', uploadForm.file);
       formData.append('recordDate', new Date().toISOString().split('T')[0]);
-      
+
       await api.uploadFile('/patient/medical-records', formData, token);
-      
+
       // Reload medical records
       const records = await api.get('/patient/medical-records', token);
       setMedicalRecords(records.records || []);
-      
+
       setShowUploadModal(false);
       setUploadForm({ title: '', type: '', file: null });
       alert('Record uploaded successfully!');
     } catch (err) {
       console.error('Error uploading record:', err);
-      alert('Failed to upload record');
+      alert('Failed to upload record: ' + err.message);
+    }
+  };
+
+  // NEW: Add Vital sign
+  const handleAddVital = async () => {
+    const { bloodPressure, heartRate, temperature, weight, recordedDate } = vitalForm;
+    if (!bloodPressure && !heartRate && !temperature && !weight) {
+      alert('Fill at least one vital value');
+      return;
+    }
+
+    try {
+      await api.post('/patient/vital-signs', {
+        bloodPressure,
+        heartRate,
+        temperature,
+        weight,
+        recordedDate,
+        notes: vitalForm.notes || null
+      }, token);
+
+      // append locally (or re-fetch)
+      const newVitals = await api.get('/patient/vital-signs', token);
+      setVitalSigns(newVitals.vitals || []);
+      setShowAddVitalModal(false);
+      setVitalForm({
+        bloodPressure: '',
+        heartRate: '',
+        temperature: '',
+        weight: '',
+        recordedDate: new Date().toISOString().split('T')[0],
+        notes: ''
+      });
+      alert('Vitals added successfully!');
+    } catch (err) {
+      console.error('Error adding vitals:', err);
+      alert('Failed to add vitals: ' + err.message);
     }
   };
 
@@ -189,8 +299,27 @@ const [token, setToken] = useState(localStorage.getItem('mv_token') || '');
     localStorage.removeItem('mv_token');
     localStorage.removeItem('mv_role');
     window.location.href = '/login';
-
   };
+
+  // Utility: download a record (assumes backend serves files under /uploads/... or provide a dedicated download endpoint)
+  const downloadRecord = (record) => {
+  if (!record.file_path) {
+    alert("No file attached to this record");
+    return;
+  }
+
+  let url = record.file_path.startsWith("http")
+    ? record.file_path
+    : `${API_BASE}${record.file_path.startsWith("/") ? "" : "/"}${record.file_path}`;
+
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = record.file_name || "file";  // optional
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+};
+
 
   if (loading) {
     return (
@@ -363,7 +492,10 @@ const [token, setToken] = useState(localStorage.getItem('mv_token') || '');
                       <p className="font-medium text-slate-800">{record.title}</p>
                       <p className="text-xs text-slate-500">{record.record_date}</p>
                     </div>
-                    <Download className="w-4 h-4 text-slate-400 cursor-pointer hover:text-sky-500" />
+                    <Download
+                      className="w-4 h-4 text-slate-400 cursor-pointer hover:text-sky-500"
+                      onClick={() => downloadRecord(record)}
+                    />
                   </div>
                 ))}
                 {(!dashboardOverview.recentRecords || !dashboardOverview.recentRecords.length) && (
@@ -447,7 +579,10 @@ const [token, setToken] = useState(localStorage.getItem('mv_token') || '');
                         <p className="text-xs text-slate-500">{record.record_date}</p>
                       </div>
                     </div>
-                    <Download className="w-5 h-5 text-slate-400 cursor-pointer hover:text-sky-500" />
+                    <Download
+                      className="w-5 h-5 text-slate-400 cursor-pointer hover:text-sky-500"
+                      onClick={() => downloadRecord(record)}
+                    />
                   </div>
                 ))}
                 {!medicalRecords.length && (
@@ -457,41 +592,103 @@ const [token, setToken] = useState(localStorage.getItem('mv_token') || '');
             </div>
           )}
 
-          {/* Appointments Tab */}
-          {activeTab === 'appointments' && (
-            <div className="bg-white rounded-2xl p-8 shadow-lg">
-              <div className="flex justify-between items-center mb-6">
-                <h3 className="text-2xl font-bold text-slate-800">Appointments</h3>
-                <button className="flex items-center space-x-2 px-4 py-2 bg-sky-500 text-white rounded-lg hover:bg-sky-600 transition">
-                  <Plus className="w-4 h-4" />
-                  <span>Book Appointment</span>
-                </button>
-              </div>
+{/* Appointments Tab */}
+{activeTab === 'appointments' && (
+  <div className="bg-white rounded-2xl p-8 shadow-lg">
 
-              <div className="space-y-4">
-                {appointments.map(apt => (
-                  <div key={apt.id} className="border-l-4 border-sky-500 bg-sky-50 p-5 rounded-r-xl">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <p className="text-lg font-bold text-slate-800">{apt.doctor_name}</p>
-                        <p className="text-slate-600">{apt.specialty}</p>
-                        <div className="flex items-center space-x-4 mt-2 text-sm text-slate-500">
-                          <span>📅 {apt.appointment_date}</span>
-                          <span>🕐 {apt.appointment_time}</span>
-                        </div>
-                      </div>
-                      <span className="px-3 py-1 bg-emerald-100 text-emerald-700 rounded-full text-sm font-medium">
-                        {apt.status}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-                {!appointments.length && (
-                  <p className="text-center text-slate-500 py-8">No appointments found</p>
-                )}
+    <div className="flex justify-between items-center mb-6">
+      <h3 className="text-2xl font-bold text-slate-800">Appointments</h3>
+
+      <button
+        onClick={() => setIsAppointmentModalOpen(true)}
+        className="flex items-center space-x-2 px-4 py-2 bg-sky-500 text-white rounded-lg hover:bg-sky-600 transition"
+      >
+        <Plus className="w-4 h-4" />
+        <span>Book Appointment</span>
+      </button>
+    </div>
+
+    <div className="space-y-4">
+      {(Array.isArray(appointments) ? appointments : []).map((apt, idx) => {
+        if (!apt) return null; // skip bad entries
+        const id = apt.id ?? idx;
+        return (
+          <div key={id} className="border-l-4 border-sky-500 bg-sky-50 p-5 rounded-r-xl">
+            <div className="flex justify-between items-start">
+              <div>
+                <p className="text-lg font-bold text-slate-800">{apt.doctor_name ?? 'Unknown Doctor'}</p>
+                <p className="text-slate-600">{apt.specialty ?? 'General'}</p>
+                <div className="flex items-center space-x-4 mt-2 text-sm text-slate-500">
+                  <span>📅 {apt.appointment_date ?? '—'}</span>
+                  <span>🕐 {apt.appointment_time ?? '—'}</span>
+                </div>
               </div>
+              <span className="px-3 py-1 bg-emerald-100 text-emerald-700 rounded-full text-sm font-medium">
+                {apt.status ?? 'Unknown'}
+              </span>
             </div>
-          )}
+          </div>
+        );
+      })}
+
+      {(!Array.isArray(appointments) || appointments.length === 0) && (
+        <p className="text-center text-slate-500 py-8">No appointments found</p>
+      )}
+    </div>
+
+    {/* BOOK APPOINTMENT MODAL */}
+    {isAppointmentModalOpen && (
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <div className="bg-white p-6 rounded-xl w-96 shadow-xl">
+          <h2 className="text-xl font-semibold mb-4">Book Appointment</h2>
+
+          <input
+            type="date"
+            name="date"
+            value={appointmentForm.date}
+            onChange={handleAppointmentChange}
+            className="w-full p-2 border rounded mb-3"
+          />
+
+          <input
+            type="time"
+            name="time"
+            value={appointmentForm.time}
+            onChange={handleAppointmentChange}
+            className="w-full p-2 border rounded mb-3"
+          />
+
+          <textarea
+            name="reason"
+            value={appointmentForm.reason}
+            onChange={handleAppointmentChange}
+            placeholder="Reason for appointment"
+            className="w-full p-2 border rounded mb-4"
+          ></textarea>
+
+          <div className="flex justify-end space-x-3">
+            <button
+              onClick={() => setIsAppointmentModalOpen(false)}
+              className="px-4 py-2 bg-gray-300 rounded hover:bg-gray-400 transition"
+            >
+              Cancel
+            </button>
+
+            <button
+              onClick={submitAppointment}
+              className="px-4 py-2 bg-sky-500 text-white rounded hover:bg-sky-600 transition"
+            >
+              Book
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+
+  </div>
+)}
+
+
 
           {/* Prescriptions Tab */}
           {activeTab === 'prescriptions' && (
@@ -526,7 +723,10 @@ const [token, setToken] = useState(localStorage.getItem('mv_token') || '');
             <div className="bg-white rounded-2xl p-8 shadow-lg">
               <div className="flex justify-between items-center mb-6">
                 <h3 className="text-2xl font-bold text-slate-800">Vital Signs History</h3>
-                <button className="flex items-center space-x-2 px-4 py-2 bg-sky-500 text-white rounded-lg hover:bg-sky-600 transition">
+                <button
+                  onClick={() => setShowAddVitalModal(true)}
+                  className="flex items-center space-x-2 px-4 py-2 bg-sky-500 text-white rounded-lg hover:bg-sky-600 transition"
+                >
                   <Plus className="w-4 h-4" />
                   <span>Add Entry</span>
                 </button>
@@ -618,6 +818,91 @@ const [token, setToken] = useState(localStorage.getItem('mv_token') || '');
                 className="w-full py-3 bg-sky-500 text-white rounded-xl font-semibold hover:bg-sky-600 transition"
               >
                 Upload
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Vitals Modal */}
+      {showAddVitalModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-8 max-w-md w-full">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-xl font-bold text-slate-800">Add Vital Entry</h3>
+              <button onClick={() => setShowAddVitalModal(false)}>
+                <X className="w-6 h-6 text-slate-400 hover:text-slate-600" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Date</label>
+                <input
+                  type="date"
+                  value={vitalForm.recordedDate}
+                  onChange={(e) => setVitalForm({ ...vitalForm, recordedDate: e.target.value })}
+                  className="w-full p-3 rounded-xl border border-slate-300 focus:border-sky-500 focus:outline-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Blood Pressure</label>
+                  <input
+                    type="text"
+                    placeholder="e.g., 120/80"
+                    value={vitalForm.bloodPressure}
+                    onChange={(e) => setVitalForm({ ...vitalForm, bloodPressure: e.target.value })}
+                    className="w-full p-3 rounded-xl border border-slate-300 focus:border-sky-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Heart Rate (bpm)</label>
+                  <input
+                    type="number"
+                    value={vitalForm.heartRate}
+                    onChange={(e) => setVitalForm({ ...vitalForm, heartRate: e.target.value })}
+                    className="w-full p-3 rounded-xl border border-slate-300 focus:border-sky-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Temperature (°F)</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={vitalForm.temperature}
+                    onChange={(e) => setVitalForm({ ...vitalForm, temperature: e.target.value })}
+                    className="w-full p-3 rounded-xl border border-slate-300 focus:border-sky-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Weight (kg)</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={vitalForm.weight}
+                    onChange={(e) => setVitalForm({ ...vitalForm, weight: e.target.value })}
+                    className="w-full p-3 rounded-xl border border-slate-300 focus:border-sky-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Notes (optional)</label>
+                <textarea
+                  value={vitalForm.notes}
+                  onChange={(e) => setVitalForm({ ...vitalForm, notes: e.target.value })}
+                  className="w-full p-3 rounded-xl border border-slate-300 focus:border-sky-500 focus:outline-none"
+                  rows={3}
+                />
+              </div>
+
+              <button
+                onClick={handleAddVital}
+                className="w-full py-3 bg-sky-500 text-white rounded-xl font-semibold hover:bg-sky-600 transition"
+              >
+                Add Vital
               </button>
             </div>
           </div>
