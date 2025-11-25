@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { User, FileText, Calendar, Activity, Heart, Pill, Download, Upload, Plus, X, Edit2, Save, AlertCircle } from 'lucide-react';
+import PatientAppointmentBooking from './PatientAppointmentBooking';
 
 // API client configuration
 const API_BASE = 'http://localhost:4000';
@@ -391,8 +392,9 @@ const submitAppointment = async () => {
           {[
             { id: 'overview', label: 'Overview', icon: Activity },
             { id: 'profile', label: 'Profile', icon: User },
+            { id: 'book', label: 'Book Appointment', icon: Calendar },
             { id: 'records', label: 'Medical Records', icon: FileText },
-            { id: 'appointments', label: 'Appointments', icon: Calendar },
+            // { id: 'appointments', label: 'Appointments', icon: Calendar },
             { id: 'prescriptions', label: 'Prescriptions', icon: Pill },
             { id: 'vitals', label: 'Vital Signs', icon: Heart }
           ].map(tab => {
@@ -763,6 +765,9 @@ const submitAppointment = async () => {
           )}
         </div>
       </div>
+
+      {/* Book Appointment Tab */}
+{activeTab === 'book' && <PatientAppointmentBooking />}
 
       {/* Upload Modal */}
       {showUploadModal && (

@@ -12,9 +12,12 @@ import PatientDashboard from './pages/patient/PatientDashboard'
 import DoctorDashboard from './pages/doctor/DoctorDashboard'
 import AdminDashboard from './pages/admin/AdminDashboard'
 import RequireAuth from './components/auth/RequireAuth';
+import PatientHistory from './pages/doctor/DoctorPatientHistoryAccess';
 
 // import ProtectedRoute from './components/auth/ProtectedRoute'
 import AuthNavBar from './components/layout/AuthNavBar'
+import DoctorScheduleManagement from "./pages/doctor/DoctorScheduleManagement";
+import PatientAppointmentBooking from './pages/patient/PatientAppointmentBooking';
 
 export default function App(){
   return (
@@ -59,7 +62,16 @@ export default function App(){
             </RequireAuth>
           }
         />
-       <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="/doctor/patient/:id" element={
+          <RequireAuth role="doctor">
+            <PatientHistory />
+          </RequireAuth>
+        } />
+        <Route path="/patient/book-appointment" element={<PatientAppointmentBooking />} />
+        <Route path="/doctor/schedule" element={<DoctorScheduleManagement />} />
+
+
+        <Route path="*" element={<Navigate to="/" replace />} />
 
       </Routes>
 

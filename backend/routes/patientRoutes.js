@@ -51,4 +51,42 @@ router.post("/vital-signs", addVitalSigns);
 // Dashboard Overview
 router.get("/dashboard", getDashboardOverview);
 
+router.get("/search", authenticateToken, async (req, res) => {
+  try {
+    const query = req.query.query || '';
+    const db = req.app.get('db'); // or however you access your db
+    
+    let sql = `
+      SELECT 
+        u.id, u.name, u.email, u.phone,
+        dp.specialty, dp.qualification, dp.experience_years,
+        dp.location, dp.consultation_fee
+      FROM users u
+      JOIN doctor_profiles dp ON u.id = dp.user_id
+      WHERE u.role = 'doctor' AND u.is_verified = 1
+    `;
+    
+    const params = [];
+    
+    if (query && query !== 'all') {
+      sql += ` AND (
+        u.name LIKE ? OR 
+        dp.specialty LIKE ? OR 
+        dp.location LIKE ?
+      )`;
+      const searchTerm = `%${query}%`;
+      params.push(searchTerm, searchTerm, searchTerm);
+    }
+    
+    sql += ` ORDER BY u.name`;
+    
+    const [doctors] = await db.query(sql, params);
+    
+    return res.json({ doctors });
+  } catch (error) {
+    console.error('Error searching doctors:', error);
+    return res.status(500).json({ message: 'Server error' });
+  }
+});
+
 export default router;

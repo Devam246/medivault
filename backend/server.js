@@ -4,6 +4,9 @@ import cookieParser from "cookie-parser";
 import authRoutes from "./routes/authRoutes.js";
 import patientRoutes from "./routes/patientRoutes.js";
 import doctorRoutes from "./routes/doctorRoutes.js";
+import appointmentRoutes from "./routes/appointments.js";
+import doctorsSearchRoutes from './routes/doctors.js'; // For searching doctors
+
 
 export const app = express();
 
@@ -42,6 +45,8 @@ app.use("/uploads", express.static("uploads"));
 app.use("/auth", authRoutes);
 app.use("/patient", patientRoutes);
 app.use("/doctor", doctorRoutes);
+app.use("/appointments", appointmentRoutes);
+app.use('/doctors', doctorsSearchRoutes); // /doctors/search - patients search doctors
 
 // Global error handler
 app.use((err, req, res, next) => {
