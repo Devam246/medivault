@@ -1,4 +1,3 @@
-
 // ==========================================
 // patientRoutes.js
 // ==========================================
@@ -26,32 +25,53 @@ const router = express.Router();
 router.use(authenticateToken);
 router.use(requireRole('patient'));
 
-// Profile
+// =======================
+// PROFILE ROUTES
+// =======================
 router.get("/profile", getPatientProfile);
 router.put("/profile", updatePatientProfile);
 
-// Medical Records
+// =======================
+// MEDICAL RECORDS ROUTES
+// =======================
 router.get("/medical-records", getMedicalRecords);
 router.post("/medical-records", upload.single('file'), uploadMedicalRecord);
 router.delete("/medical-records/:recordId", deleteMedicalRecord);
 
-// Appointments
+// =======================
+// APPOINTMENTS ROUTES
+// =======================
 router.get("/appointments", getAppointments);
 router.post("/appointments", bookAppointment);
 router.put("/appointments/:appointmentId/cancel", cancelAppointment);
 
-
-// Prescriptions
+// =======================
+// PRESCRIPTIONS ROUTES
+// =======================
 router.get("/prescriptions", getPrescriptions);
 
-// Vital Signs
+// =======================
+// VITAL SIGNS ROUTES
+// =======================
 router.get("/vital-signs", getVitalSigns);
 router.post("/vital-signs", addVitalSigns);
 
-// Dashboard Overview
+// =======================
+// DASHBOARD ROUTES
+// =======================
 router.get("/dashboard", getDashboardOverview);
 
-router.get("/search", authenticateToken, async (req, res) => {
+// =======================
+// SUMMARY ROUTES (TODO: Add these functions to controller if needed)
+// =======================
+// router.get('/summary', getPatientSummary);
+// router.get('/summary/history', getSummaryHistory);
+// router.get('/:id/summary', getPatientSummary);
+
+// =======================
+// DOCTOR SEARCH ROUTE
+// =======================
+router.get("/search", async (req, res) => {
   try {
     const query = req.query.query || '';
     const db = req.app.get('db'); // or however you access your db

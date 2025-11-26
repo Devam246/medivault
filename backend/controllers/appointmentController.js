@@ -1,11 +1,35 @@
 import db from "../config/db.js";
 import crypto from "crypto";
 
+// Helper function to generate access token
+function generateAccessToken() {
+  return crypto.randomBytes(32).toString('hex');
+}
+
+// Helper function to generate time slots
+function generateTimeSlots(startTime, endTime, intervalMinutes) {
+  const slots = [];
+  const [startHour, startMin] = startTime.split(':').map(Number);
+  const [endHour, endMin] = endTime.split(':').map(Number);
+  
+  let currentMinutes = startHour * 60 + startMin;
+  const endMinutes = endHour * 60 + endMin;
+  
+  while (currentMinutes + intervalMinutes <= endMinutes) {
+    const hours = Math.floor(currentMinutes / 60);
+    const minutes = currentMinutes % 60;
+    const timeString = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00`;
+    slots.push(timeString);
+    currentMinutes += intervalMinutes;
+  }
+  
+  return slots;
+}
+
 // =======================
 // DOCTOR AVAILABILITY MANAGEMENT
 // =======================
 
-// Get doctor's availability settings
 export async function getDoctorAvailability(req, res) {
   try {
     const doctorId = req.user.id;
@@ -16,7 +40,6 @@ export async function getDoctorAvailability(req, res) {
     );
 
     if (rows.length === 0) {
-      // Return default availability if profile doesn't exist
       const defaultAvailability = {
         monday: { enabled: true, start: '09:00', end: '17:00' },
         tuesday: { enabled: true, start: '09:00', end: '17:00' },
@@ -31,7 +54,6 @@ export async function getDoctorAvailability(req, res) {
 
     const profile = rows[0];
     
-    // Parse availability from database format to frontend format
     const availableDays = profile.available_days ? profile.available_days.split(',') : [];
     const dayMap = { 'Mon': 'monday', 'Tue': 'tuesday', 'Wed': 'wednesday', 'Thu': 'thursday', 
                      'Fri': 'friday', 'Sat': 'saturday', 'Sun': 'sunday' };
@@ -46,7 +68,6 @@ export async function getDoctorAvailability(req, res) {
       sunday: { enabled: false, start: '09:00', end: '13:00' }
     };
     
-    // Set enabled days and times
     availableDays.forEach(shortDay => {
       const longDay = dayMap[shortDay];
       if (longDay) {
@@ -63,18 +84,15 @@ export async function getDoctorAvailability(req, res) {
   }
 }
 
-// Update doctor's availability settings
 export async function updateDoctorAvailability(req, res) {
   try {
     const doctorId = req.user.id;
     const { monday, tuesday, wednesday, thursday, friday, saturday, sunday } = req.body;
 
-    // Convert availability object to database format
     const availableDays = [];
     const dayMap = { monday: 'Mon', tuesday: 'Tue', wednesday: 'Wed', thursday: 'Thu', 
                      friday: 'Fri', saturday: 'Sat', sunday: 'Sun' };
     
-    // Get the earliest start and latest end time
     let earliestStart = '23:59';
     let latestEnd = '00:00';
     
@@ -86,7 +104,6 @@ export async function updateDoctorAvailability(req, res) {
       }
     });
 
-    // Update doctor profile
     await db.query(
       `UPDATE doctor_profiles 
        SET available_days = ?, 
@@ -110,13 +127,12 @@ export async function updateDoctorAvailability(req, res) {
 export async function getAvailableSlots(req, res) {
   try {
     const doctorId = req.params.doctorId;
-    const date = req.query.date; // YYYY-MM-DD
+    const date = req.query.date;
 
     if (!date) {
       return res.status(400).json({ message: "Date parameter required" });
     }
 
-    // Get doctor's availability settings
     const [profileRows] = await db.query(
       `SELECT available_days, available_time_start, available_time_end, slot_duration 
        FROM doctor_profiles WHERE user_id = ?`,
@@ -129,7 +145,6 @@ export async function getAvailableSlots(req, res) {
 
     const profile = profileRows[0];
     
-    // Check if doctor is available on this day
     const dayOfWeek = new Date(date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short' });
     const availableDays = profile.available_days ? profile.available_days.split(',') : [];
     
@@ -140,26 +155,23 @@ export async function getAvailableSlots(req, res) {
       });
     }
 
-    // Generate time slots
     const startTime = profile.available_time_start || '09:00:00';
     const endTime = profile.available_time_end || '17:00:00';
-    const slotDuration = profile.slot_duration || 30; // minutes
+    const slotDuration = profile.slot_duration || 30;
 
     const slots = generateTimeSlots(startTime, endTime, slotDuration);
 
-    // Get booked appointments for this date (CONFIRMED ONLY)
     const [bookedRows] = await db.query(
       `SELECT appointment_time 
        FROM appointments 
        WHERE doctor_id = ? 
        AND appointment_date = ? 
-       AND status = 'confirmed'`,
+       AND status IN ('confirmed', 'pending')`,
       [doctorId, date]
     );
 
     const bookedTimes = new Set(bookedRows.map(r => r.appointment_time));
 
-    // Mark slots as available or booked
     const availableSlots = slots.map(slot => ({
       time: slot,
       available: !bookedTimes.has(slot)
@@ -176,37 +188,12 @@ export async function getAvailableSlots(req, res) {
   }
 }
 
-// Helper function to generate time slots
-function generateTimeSlots(startTime, endTime, intervalMinutes) {
-  const slots = [];
-  const [startHour, startMin] = startTime.split(':').map(Number);
-  const [endHour, endMin] = endTime.split(':').map(Number);
-  
-  let currentMinutes = startHour * 60 + startMin;
-  const endMinutes = endHour * 60 + endMin;
-  
-  while (currentMinutes + intervalMinutes <= endMinutes) {
-    const hours = Math.floor(currentMinutes / 60);
-    const minutes = currentMinutes % 60;
-    const timeString = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00`;
-    slots.push(timeString);
-    currentMinutes += intervalMinutes;
-  }
-  
-  return slots;
-}
-
-// Helper function to generate access token
-function generateAccessToken() {
-  return crypto.randomBytes(32).toString('hex');
-}
-
 // =======================
 // BOOK APPOINTMENT (PATIENT)
 // =======================
 
 export async function bookAppointment(req, res) {
-  const conn = await db.getConnection();
+  let conn;
   
   try {
     const { doctor_id, appointment_date, appointment_time, reason } = req.body;
@@ -218,7 +205,6 @@ export async function bookAppointment(req, res) {
       });
     }
 
-    // Validate doctor exists and is verified
     const [doctorRows] = await db.query(
       `SELECT id FROM users WHERE id = ? AND role = 'doctor' AND is_verified = 1`,
       [doctor_id]
@@ -228,61 +214,51 @@ export async function bookAppointment(req, res) {
       return res.status(404).json({ message: "Doctor not found or not verified" });
     }
 
-    // Start transaction
+    conn = await db.getConnection();
     await conn.beginTransaction();
 
-    // Check for existing CONFIRMED appointment (with lock)
-    const [existingRows] = await conn.query(
-      `SELECT id FROM appointments 
-       WHERE doctor_id = ? 
-       AND appointment_date = ? 
-       AND appointment_time = ? 
-       AND status = 'confirmed'
-       FOR UPDATE`,
-      [doctor_id, appointment_date, appointment_time]
-    );
+    try {
+      // Check for any existing appointment (confirmed OR pending)
+      const [existingRows] = await conn.query(
+        `SELECT id, status FROM appointments 
+         WHERE doctor_id = ? 
+         AND appointment_date = ? 
+         AND appointment_time = ? 
+         AND status IN ('confirmed', 'pending')
+         FOR UPDATE`,
+        [doctor_id, appointment_date, appointment_time]
+      );
 
-    if (existingRows.length > 0) {
-      await conn.rollback();
-      return res.status(409).json({ 
-        message: "This time slot is already booked. Please select another time." 
+      if (existingRows.length > 0) {
+        await conn.rollback();
+        return res.status(409).json({ 
+          message: "This time slot is already booked or pending. Please select another time." 
+        });
+      }
+
+      const [result] = await conn.query(
+        `INSERT INTO appointments 
+         (patient_id, doctor_id, appointment_date, appointment_time, reason, status, created_at) 
+         VALUES (?, ?, ?, ?, ?, 'pending', NOW())`,
+        [patient_id, doctor_id, appointment_date, appointment_time, reason || null]
+      );
+
+      const appointmentId = result.insertId;
+      await conn.commit();
+
+      return res.json({ 
+        message: "Appointment requested successfully! Waiting for doctor confirmation.",
+        appointmentId,
+        status: 'pending'
       });
+
+    } catch (err) {
+      await conn.rollback();
+      throw err;
     }
 
-    // Insert new appointment with 'pending' status
-    const [result] = await conn.query(
-      `INSERT INTO appointments 
-       (patient_id, doctor_id, appointment_date, appointment_time, reason, status, created_at) 
-       VALUES (?, ?, ?, ?, ?, 'pending', NOW())`,
-      [patient_id, doctor_id, appointment_date, appointment_time, reason || null]
-    );
-
-    const appointmentId = result.insertId;
-
-    // Generate access token for medical history
-    const accessToken = generateAccessToken();
-    const expiresAt = new Date();
-    expiresAt.setMonth(expiresAt.getMonth() + 6); // Token expires in 6 months
-
-    await conn.query(
-      `INSERT INTO patient_access_tokens 
-       (patient_id, token, appointment_id, doctor_id, expires_at, is_active)
-       VALUES (?, ?, ?, ?, ?, TRUE)`,
-      [patient_id, accessToken, appointmentId, doctor_id, expiresAt]
-    );
-
-    await conn.commit();
-
-    return res.json({ 
-      message: "Appointment requested successfully! Waiting for doctor confirmation.",
-      appointmentId,
-      accessToken,
-      tokenExpiry: expiresAt
-    });
-
   } catch (err) {
-    if (conn) await conn.rollback();
-    console.error(err);
+    console.error('Error in bookAppointment:', err);
     return res.status(500).json({ message: "Server error" });
   } finally {
     if (conn) conn.release();
@@ -299,7 +275,14 @@ export async function getPatientAppointments(req, res) {
 
     const [appointments] = await db.query(
       `SELECT 
-        a.*, 
+        a.id,
+        a.patient_id,
+        a.doctor_id,
+        a.appointment_date,
+        a.appointment_time,
+        a.reason,
+        a.status,
+        a.created_at,
         u.name AS doctor_name,
         dp.specialty,
         pat.token AS access_token,
@@ -313,9 +296,12 @@ export async function getPatientAppointments(req, res) {
       [patientId]
     );
 
+    console.log('📋 Fetched appointments for patient:', patientId);
+    console.log('📊 Appointment count:', appointments.length);
+
     return res.json({ appointments });
   } catch (err) {
-    console.error(err);
+    console.error('❌ Error fetching appointments:', err);
     return res.status(500).json({ message: "Server error" });
   }
 }
@@ -329,7 +315,6 @@ export async function cancelAppointment(req, res) {
     const appointmentId = req.params.id;
     const patientId = req.user.id;
 
-    // Verify appointment belongs to patient
     const [existingRows] = await db.query(
       `SELECT * FROM appointments WHERE id = ? AND patient_id = ?`,
       [appointmentId, patientId]
@@ -343,7 +328,6 @@ export async function cancelAppointment(req, res) {
 
     const appointment = existingRows[0];
 
-    // Check if appointment is in the past
     const appointmentDateTime = new Date(`${appointment.appointment_date}T${appointment.appointment_time}`);
     if (appointmentDateTime < new Date()) {
       return res.status(400).json({ 
@@ -351,7 +335,6 @@ export async function cancelAppointment(req, res) {
       });
     }
 
-    // Update appointment status to cancelled
     await db.query(
       `UPDATE appointments SET status = 'cancelled' WHERE id = ?`,
       [appointmentId]
@@ -377,9 +360,11 @@ export async function getDoctorAppointments(req, res) {
         a.*, 
         u.name AS patient_name,
         u.email AS patient_email,
-        u.phone AS patient_phone
+        u.phone AS patient_phone,
+        pat.token AS access_token
        FROM appointments a
        JOIN users u ON a.patient_id = u.id
+       LEFT JOIN patient_access_tokens pat ON a.id = pat.appointment_id AND pat.is_active = TRUE
        WHERE a.doctor_id = ?
        ORDER BY a.appointment_date DESC, a.appointment_time DESC`,
       [doctorId]
@@ -393,73 +378,121 @@ export async function getDoctorAppointments(req, res) {
 }
 
 // =======================
-// RESPOND TO APPOINTMENT (DOCTOR)
+// RESPOND TO APPOINTMENT (DOCTOR) - FIXED VERSION
 // =======================
 
 export async function respondToAppointment(req, res) {
+  let conn;
+  
   try {
     const appointmentId = req.params.id;
     const doctorId = req.user.id;
-    const { action } = req.body; // 'approve' or 'decline'
+    const { action } = req.body;
 
     if (!['approve', 'decline'].includes(action)) {
       return res.status(400).json({ message: "Invalid action. Use 'approve' or 'decline'" });
     }
 
-    // Verify appointment belongs to doctor and is pending
+    // Get appointment details first (outside transaction)
     const [existingRows] = await db.query(
       `SELECT * FROM appointments WHERE id = ? AND doctor_id = ?`,
       [appointmentId, doctorId]
     );
 
     if (existingRows.length === 0) {
-      return res.status(404).json({ 
-        message: "Appointment not found or you don't have permission" 
-      });
+      return res.status(404).json({ message: "Appointment not found or you don't have permission" });
     }
 
     const appointment = existingRows[0];
 
     if (appointment.status !== 'pending') {
-      return res.status(400).json({ 
-        message: `Appointment is already ${appointment.status}` 
+      return res.status(400).json({ message: `Appointment is already ${appointment.status}` });
+    }
+
+    if (action === 'approve') {
+      // Get connection and start transaction
+      conn = await db.getConnection();
+      await conn.beginTransaction();
+
+      try {
+        // Check for time slot conflicts with lock
+        const [conflictRows] = await conn.query(
+          `SELECT id FROM appointments 
+           WHERE doctor_id = ? 
+           AND appointment_date = ? 
+           AND appointment_time = ? 
+           AND status = 'confirmed'
+           AND id != ?
+           FOR UPDATE`,
+          [doctorId, appointment.appointment_date, appointment.appointment_time, appointmentId]
+        );
+
+        if (conflictRows.length > 0) {
+          await conn.rollback();
+          return res.status(409).json({ 
+            message: "This time slot has already been confirmed for another patient" 
+          });
+        }
+
+        // Update appointment status
+        await conn.query(
+          `UPDATE appointments SET status = 'confirmed' WHERE id = ?`,
+          [appointmentId]
+        );
+
+        // Generate and insert token
+        const accessToken = generateAccessToken();
+        const expiresAt = new Date();
+        expiresAt.setMonth(expiresAt.getMonth() + 6);
+
+        const [tokenResult] = await conn.query(
+          `INSERT INTO patient_access_tokens 
+           (patient_id, token, appointment_id, doctor_id, expires_at, is_active, created_at)
+           VALUES (?, ?, ?, ?, ?, TRUE, NOW())`,
+          [appointment.patient_id, accessToken, appointmentId, doctorId, expiresAt]
+        );
+
+        // Commit transaction
+        await conn.commit();
+
+        return res.json({
+          message: "Appointment approved successfully",
+          status: 'confirmed',
+          accessToken,
+          tokenExpiry: expiresAt,
+          tokenId: tokenResult.insertId
+        });
+
+      } catch (err) {
+        await conn.rollback();
+        throw err;
+      }
+
+    } else {
+      // Decline appointment (no transaction needed for single update)
+      await db.query(
+        `UPDATE appointments SET status = 'cancelled' WHERE id = ?`,
+        [appointmentId]
+      );
+
+      return res.json({
+        message: "Appointment declined successfully",
+        status: 'cancelled'
       });
     }
 
-    // Check if there's already a confirmed appointment at this time
-    if (action === 'approve') {
-      const [conflictRows] = await db.query(
-        `SELECT id FROM appointments 
-         WHERE doctor_id = ? 
-         AND appointment_date = ? 
-         AND appointment_time = ? 
-         AND status = 'confirmed'
-         AND id != ?`,
-        [doctorId, appointment.appointment_date, appointment.appointment_time, appointmentId]
-      );
-
-      if (conflictRows.length > 0) {
-        return res.status(409).json({ 
-          message: "This time slot has already been confirmed for another patient" 
-        });
-      }
-    }
-
-    // Update appointment status
-    const newStatus = action === 'approve' ? 'confirmed' : 'cancelled';
-    
-    await db.query(
-      `UPDATE appointments SET status = ? WHERE id = ?`,
-      [newStatus, appointmentId]
-    );
-
-    return res.json({ 
-      message: `Appointment ${action === 'approve' ? 'approved' : 'declined'} successfully`,
-      status: newStatus 
-    });
   } catch (err) {
-    console.error(err);
-    return res.status(500).json({ message: "Server error" });
+    console.error('Error in respondToAppointment:', err);
+    return res.status(500).json({ 
+      message: "Server error",
+      error: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
+    
+  } finally {
+    // Always release connection if it exists
+    if (conn) {
+      conn.release();
+    }
   }
 }
 
@@ -472,7 +505,6 @@ export async function getPatientHistoryWithToken(req, res) {
     const { token } = req.params;
     const doctorId = req.user.id;
 
-    // Verify token
     const [tokenRows] = await db.query(
       `SELECT * FROM patient_access_tokens 
        WHERE token = ? 
@@ -491,13 +523,11 @@ export async function getPatientHistoryWithToken(req, res) {
     const tokenData = tokenRows[0];
     const patientId = tokenData.patient_id;
 
-    // Update used_at timestamp
     await db.query(
       `UPDATE patient_access_tokens SET used_at = NOW() WHERE id = ?`,
       [tokenData.id]
     );
 
-    // Fetch patient history
     const [profile] = await db.query(
       `SELECT id, name, email, phone, address, date_of_birth, blood_group, emergency_contact
        FROM users WHERE id = ? AND role='patient'`,

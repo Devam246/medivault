@@ -1,6 +1,5 @@
 import db from "../config/db.js";
 
-
 // -------------------------
 // DASHBOARD OVERVIEW
 // -------------------------
@@ -8,7 +7,7 @@ export async function getDoctorDashboard(req, res) {
   try {
     const doctorId = req.user.id;
 
-    // Today’s appointments
+    // Today's appointments
     const [todayAppointments] = await db.query(
       `SELECT a.*, u.name AS patient_name
        FROM appointments a
@@ -56,7 +55,7 @@ export async function getDoctorDashboard(req, res) {
     });
 
   } catch (err) {
-    console.error(err);
+    console.error('Error in getDoctorDashboard:', err);
     res.status(500).json({ message: "Server error" });
   }
 }
@@ -68,18 +67,23 @@ export async function searchPatient(req, res) {
   try {
     const { query } = req.query;
 
+    if (!query || query.trim() === '') {
+      return res.json({ patients: [] });
+    }
+
+    // Search by ID, name, email, or phone
     const [patients] = await db.query(
       `SELECT id, name, email, phone, blood_group 
        FROM users 
        WHERE role='patient' AND 
-       (id = ? )`,
-      [query]
+       (id = ? OR name LIKE ? OR email LIKE ? OR phone LIKE ?)`,
+      [query, `%${query}%`, `%${query}%`, `%${query}%`]
     );
 
     return res.json({ patients });
 
   } catch (err) {
-    console.error(err);
+    console.error('Error in searchPatient:', err);
     res.status(500).json({ message: "Server error" });
   }
 }
@@ -138,8 +142,7 @@ export async function getPatientHistory(req, res) {
     });
 
   } catch (err) {
-    console.error(err);
+    console.error('Error in getPatientHistory:', err);
     res.status(500).json({ message: "Server error" });
   }
 }
-

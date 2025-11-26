@@ -1,6 +1,5 @@
-
 import React, { useState, useEffect } from 'react';
-import { User, FileText, Calendar, Activity, Heart, Pill, Download, Upload, Plus, X, Edit2, Save, AlertCircle } from 'lucide-react';
+import { User, FileText, Calendar, Activity, Heart, Pill, Download, Upload, Plus, X, Edit2, Save, AlertCircle, Copy, Check, Key, Clock } from 'lucide-react';
 import PatientAppointmentBooking from './PatientAppointmentBooking';
 
 // API client configuration
@@ -83,24 +82,159 @@ const api = {
   }
 };
 
-function PatientDashboard() {
-  // Get token from localStorage (set during login)
-  const [token, setToken] = useState(localStorage.getItem('mv_token') || '');
+// Integrated Token Display Component
+function PatientAppointmentsWithToken({ appointments, onRefresh }) {
+  const [copiedToken, setCopiedToken] = useState(null);
 
+  const copyToken = (token) => {
+    navigator.clipboard.writeText(token);
+    setCopiedToken(token);
+    setTimeout(() => setCopiedToken(null), 2000);
+  };
+
+  const getStatusColor = (status) => {
+    switch(status) {
+      case 'confirmed': return 'bg-green-100 text-green-700';
+      case 'pending': return 'bg-yellow-100 text-yellow-700';
+      case 'cancelled': return 'bg-red-100 text-red-700';
+      default: return 'bg-gray-100 text-gray-700';
+    }
+  };
+
+  const formatDate = (dateString) => {
+    return new Date(dateString).toLocaleDateString('en-US', { 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric' 
+    });
+  };
+
+  const formatTime = (timeString) => {
+    const [hours, minutes] = timeString.split(':');
+    const hour = parseInt(hours);
+    const ampm = hour >= 12 ? 'PM' : 'AM';
+    const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
+    return `${displayHour}:${minutes} ${ampm}`;
+  };
+
+  return (
+    <div className="space-y-4">
+      {appointments.length === 0 ? (
+        <div className="text-center py-12 bg-white rounded-2xl shadow-lg">
+          <Calendar className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+          <h4 className="text-lg font-semibold text-gray-800 mb-2">No appointments yet</h4>
+          <p className="text-gray-600">Book your first appointment to get started</p>
+        </div>
+      ) : (
+        appointments.map((apt, index) => (
+  <div key={`apt-${apt.id}-${index}`} className="bg-white rounded-2xl p-6 shadow-lg hover:shadow-xl transition">
+            <div className="flex justify-between items-start mb-4">
+              <div className="flex-1">
+                <div className="flex items-center space-x-3 mb-2">
+                  <h3 className="text-xl font-bold text-gray-800">{apt.doctor_name}</h3>
+                  <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(apt.status)}`}>
+                    {apt.status.toUpperCase()}
+                  </span>
+                </div>
+                <p className="text-gray-600">{apt.specialty || 'General Practice'}</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4 mb-4">
+              <div className="flex items-center space-x-2 text-gray-700">
+                <Calendar className="w-5 h-5 text-indigo-600" />
+                <span>{formatDate(apt.appointment_date)}</span>
+              </div>
+              <div className="flex items-center space-x-2 text-gray-700">
+                <Clock className="w-5 h-5 text-indigo-600" />
+                <span>{formatTime(apt.appointment_time)}</span>
+              </div>
+            </div>
+
+            {apt.reason && (
+              <div className="bg-gray-50 rounded-lg p-3 mb-4">
+                <p className="text-sm font-semibold text-gray-700 mb-1">Reason:</p>
+                <p className="text-gray-600">{apt.reason}</p>
+              </div>
+            )}
+
+            {/* Access Token Section */}
+            {apt.access_token && apt.status === 'confirmed' && (
+              <div className="border-t pt-4 mt-4">
+                <div className="bg-gradient-to-r from-indigo-50 to-purple-50 rounded-lg p-4">
+                  <div className="flex items-center space-x-2 mb-2">
+                    <Key className="w-5 h-5 text-indigo-600" />
+                    <span className="font-semibold text-gray-800">Medical History Access Token</span>
+                  </div>
+                  
+                  <p className="text-sm text-gray-600 mb-3">
+                    Share this token with your doctor to grant access to your medical history
+                  </p>
+
+                  <div className="flex items-center space-x-2">
+                    <div className="flex-1 bg-white rounded-lg p-3 font-mono text-sm text-gray-800 overflow-x-auto">
+                      {apt.access_token}
+                    </div>
+                    <button
+                      onClick={() => copyToken(apt.access_token)}
+                      className="px-4 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition flex items-center space-x-2"
+                    >
+                      {copiedToken === apt.access_token ? (
+                        <>
+                          <Check className="w-4 h-4" />
+                          <span>Copied!</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-4 h-4" />
+                          <span>Copy</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  {apt.token_expiry && (
+                    <p className="text-xs text-gray-500 mt-2">
+                      Expires: {formatDate(apt.token_expiry)}
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {apt.status === 'pending' && (
+              <div className="border-t pt-4 mt-4">
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                  <p className="text-sm text-yellow-800 flex items-center">
+                    <AlertCircle className="w-4 h-4 mr-2" />
+                    Waiting for doctor confirmation. Access token will be generated once approved.
+                  </p>
+                </div>
+              </div>
+            )}
+            {apt.status === 'cancelled' && (
+  <div className="border-t pt-4 mt-4">
+    <div className="bg-red-50 border-2 border-red-200 rounded-lg p-3">
+      <p className="text-sm text-red-800 flex items-center">
+        <X className="w-4 h-4 mr-2" />
+        ❌ This appointment has been cancelled.
+      </p>
+    </div>
+  </div>
+)}
+          </div>
+        ))
+      )}
+    </div>
+  );
+}
+
+function PatientDashboard() {
+  const [token, setToken] = useState(localStorage.getItem('mv_token') || '');
   const [activeTab, setActiveTab] = useState('overview');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  // 👇 NEW Appointment Modal States
-const [isAppointmentModalOpen, setIsAppointmentModalOpen] = useState(false);
 
-const [appointmentForm, setAppointmentForm] = useState({
-  date: "",
-  time: "",
-  reason: "",
-});
-
-
-  // State for all data
   const [patientData, setPatientData] = useState(null);
   const [medicalRecords, setMedicalRecords] = useState([]);
   const [appointments, setAppointments] = useState([]);
@@ -113,7 +247,6 @@ const [appointmentForm, setAppointmentForm] = useState({
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [uploadForm, setUploadForm] = useState({ title: '', type: '', file: null });
 
-  // New: Add Vitals Modal + form state
   const [showAddVitalModal, setShowAddVitalModal] = useState(false);
   const [vitalForm, setVitalForm] = useState({
     bloodPressure: '',
@@ -124,21 +257,32 @@ const [appointmentForm, setAppointmentForm] = useState({
     notes: ''
   });
 
-  // Load initial data
   useEffect(() => {
-    if (token) {
+  if (token) {
+    loadAllData();
+  } else {
+    window.location.href = '/login';
+  }
+
+  // Auto-refresh appointments every 30 seconds when on appointments tab
+  let refreshInterval;
+  if (activeTab === 'appointments') {
+    refreshInterval = setInterval(() => {
+      console.log('🔄 Auto-refreshing appointments...');
       loadAllData();
-    } else {
-      window.location.href = '/login';
-    }
-  }, [token]);
+    }, 30000); // 30 seconds
+  }
+
+  return () => {
+    if (refreshInterval) clearInterval(refreshInterval);
+  };
+}, [token, activeTab]); // ✅ Added activeTab dependency
 
   const loadAllData = async () => {
   try {
     setLoading(true);
     setError(null);
 
-    // Load all data in parallel
     const [profile, records, apts, presc, vitals, overview] = await Promise.all([
       api.get('/patient/profile', token),
       api.get('/patient/medical-records', token),
@@ -148,14 +292,21 @@ const [appointmentForm, setAppointmentForm] = useState({
       api.get('/patient/dashboard', token)
     ]);
 
-    // Normalize shapes defensively
     const patient = profile?.patient ?? null;
     const recordsArr = records?.records ?? (Array.isArray(records) ? records : []);
-    // appointments might come as { appointments: [...] } or directly as an array
     const apptsArr = apts?.appointments ?? (Array.isArray(apts) ? apts : []);
     const prescArr = presc?.prescriptions ?? (Array.isArray(presc) ? presc : []);
     const vitalsArr = vitals?.vitals ?? (Array.isArray(vitals) ? vitals : []);
     const dashboard = overview ?? null;
+
+    // ✅ DEBUG: Log appointments to see if tokens exist
+    console.log('📋 RAW APPOINTMENTS DATA:', apts);
+    console.log('📋 PROCESSED APPOINTMENTS:', apptsArr);
+    if (apptsArr.length > 0) {
+      console.log('🔍 FIRST APPOINTMENT:', apptsArr[0]);
+      console.log('🔑 ACCESS TOKEN:', apptsArr[0].access_token);
+      console.log('📊 STATUS:', apptsArr[0].status);
+    }
 
     setPatientData(patient);
     setEditedProfile(patient || {});
@@ -168,7 +319,6 @@ const [appointmentForm, setAppointmentForm] = useState({
   } catch (err) {
     console.error('Error loading data:', err);
     setError('Failed to load data. Please try again.');
-    // If unauthorized, clear token and redirect
     if (String(err).includes('401') || String(err).includes('403')) {
       localStorage.removeItem('mv_token');
       window.location.href = '/login';
@@ -177,7 +327,6 @@ const [appointmentForm, setAppointmentForm] = useState({
     setLoading(false);
   }
 };
-
 
   const handleProfileEdit = async () => {
     if (isEditingProfile) {
@@ -200,31 +349,6 @@ const [appointmentForm, setAppointmentForm] = useState({
     }
     setIsEditingProfile(!isEditingProfile);
   };
-  // 👇 NEW APPOINTMENT FORM HANDLERS
-const handleAppointmentChange = (e) => {
-  setAppointmentForm({
-    ...appointmentForm,
-    [e.target.name]: e.target.value,
-  });
-};
-
-const submitAppointment = async () => {
-  try {
-    await api.post('/patient/appointments', appointmentForm, token);
-
-    alert("Appointment booked!");
-    setIsAppointmentModalOpen(false);
-
-    const updated = await api.get('/patient/appointments', token);
-    setAppointments(updated.appointments || []);
-
-    setAppointmentForm({ date: "", time: "", reason: "" });
-
-  } catch (err) {
-    console.error(err);
-    alert("Error booking appointment");
-  }
-};
 
   const handleProfileChange = (e) => {
     setEditedProfile({ ...editedProfile, [e.target.name]: e.target.value });
@@ -240,13 +364,11 @@ const submitAppointment = async () => {
       const formData = new FormData();
       formData.append('title', uploadForm.title);
       formData.append('type', uploadForm.type);
-      // IMPORTANT: backend expects field name 'file' (multer single('file'))
       formData.append('file', uploadForm.file);
       formData.append('recordDate', new Date().toISOString().split('T')[0]);
 
       await api.uploadFile('/patient/medical-records', formData, token);
 
-      // Reload medical records
       const records = await api.get('/patient/medical-records', token);
       setMedicalRecords(records.records || []);
 
@@ -259,7 +381,6 @@ const submitAppointment = async () => {
     }
   };
 
-  // NEW: Add Vital sign
   const handleAddVital = async () => {
     const { bloodPressure, heartRate, temperature, weight, recordedDate } = vitalForm;
     if (!bloodPressure && !heartRate && !temperature && !weight) {
@@ -277,7 +398,6 @@ const submitAppointment = async () => {
         notes: vitalForm.notes || null
       }, token);
 
-      // append locally (or re-fetch)
       const newVitals = await api.get('/patient/vital-signs', token);
       setVitalSigns(newVitals.vitals || []);
       setShowAddVitalModal(false);
@@ -302,25 +422,23 @@ const submitAppointment = async () => {
     window.location.href = '/login';
   };
 
-  // Utility: download a record (assumes backend serves files under /uploads/... or provide a dedicated download endpoint)
   const downloadRecord = (record) => {
-  if (!record.file_path) {
-    alert("No file attached to this record");
-    return;
-  }
+    if (!record.file_path) {
+      alert("No file attached to this record");
+      return;
+    }
 
-  let url = record.file_path.startsWith("http")
-    ? record.file_path
-    : `${API_BASE}${record.file_path.startsWith("/") ? "" : "/"}${record.file_path}`;
+    let url = record.file_path.startsWith("http")
+      ? record.file_path
+      : `${API_BASE}${record.file_path.startsWith("/") ? "" : "/"}${record.file_path}`;
 
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = record.file_name || "file";  // optional
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-};
-
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = record.file_name || "file";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
 
   if (loading) {
     return (
@@ -393,8 +511,8 @@ const submitAppointment = async () => {
             { id: 'overview', label: 'Overview', icon: Activity },
             { id: 'profile', label: 'Profile', icon: User },
             { id: 'book', label: 'Book Appointment', icon: Calendar },
+            { id: 'appointments', label: 'My Appointments', icon: Calendar },
             { id: 'records', label: 'Medical Records', icon: FileText },
-            // { id: 'appointments', label: 'Appointments', icon: Calendar },
             { id: 'prescriptions', label: 'Prescriptions', icon: Pill },
             { id: 'vitals', label: 'Vital Signs', icon: Heart }
           ].map(tab => {
@@ -554,6 +672,38 @@ const submitAppointment = async () => {
             </div>
           )}
 
+          {/* Book Appointment Tab */}
+          {activeTab === 'book' && <PatientAppointmentBooking />}
+
+          {/* MY APPOINTMENTS TAB */}
+{activeTab === 'appointments' && (
+  <div className="bg-white rounded-2xl p-8 shadow-lg">
+    <div className="flex justify-between items-center mb-6">
+      <div>
+        <h3 className="text-2xl font-bold text-slate-800">My Appointments</h3>
+        <p className="text-slate-600 mt-1">View your appointment history and access tokens</p>
+      </div>
+      {/* ✅ ADD REFRESH BUTTON HERE */}
+      <button
+        onClick={() => {
+          console.log('🔄 Manual refresh clicked');
+          loadAllData();
+        }}
+        className="px-6 py-3 bg-green-500 text-white rounded-xl hover:bg-green-600 transition flex items-center space-x-2 shadow-lg"
+      >
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+        </svg>
+        <span>Refresh</span>
+      </button>
+    </div>
+    <PatientAppointmentsWithToken 
+      appointments={appointments} 
+      onRefresh={loadAllData}
+    />
+  </div>
+)}
+
           {/* Medical Records Tab */}
           {activeTab === 'records' && (
             <div className="bg-white rounded-2xl p-8 shadow-lg">
@@ -593,104 +743,6 @@ const submitAppointment = async () => {
               </div>
             </div>
           )}
-
-{/* Appointments Tab */}
-{activeTab === 'appointments' && (
-  <div className="bg-white rounded-2xl p-8 shadow-lg">
-
-    <div className="flex justify-between items-center mb-6">
-      <h3 className="text-2xl font-bold text-slate-800">Appointments</h3>
-
-      <button
-        onClick={() => setIsAppointmentModalOpen(true)}
-        className="flex items-center space-x-2 px-4 py-2 bg-sky-500 text-white rounded-lg hover:bg-sky-600 transition"
-      >
-        <Plus className="w-4 h-4" />
-        <span>Book Appointment</span>
-      </button>
-    </div>
-
-    <div className="space-y-4">
-      {(Array.isArray(appointments) ? appointments : []).map((apt, idx) => {
-        if (!apt) return null; // skip bad entries
-        const id = apt.id ?? idx;
-        return (
-          <div key={id} className="border-l-4 border-sky-500 bg-sky-50 p-5 rounded-r-xl">
-            <div className="flex justify-between items-start">
-              <div>
-                <p className="text-lg font-bold text-slate-800">{apt.doctor_name ?? 'Unknown Doctor'}</p>
-                <p className="text-slate-600">{apt.specialty ?? 'General'}</p>
-                <div className="flex items-center space-x-4 mt-2 text-sm text-slate-500">
-                  <span>📅 {apt.appointment_date ?? '—'}</span>
-                  <span>🕐 {apt.appointment_time ?? '—'}</span>
-                </div>
-              </div>
-              <span className="px-3 py-1 bg-emerald-100 text-emerald-700 rounded-full text-sm font-medium">
-                {apt.status ?? 'Unknown'}
-              </span>
-            </div>
-          </div>
-        );
-      })}
-
-      {(!Array.isArray(appointments) || appointments.length === 0) && (
-        <p className="text-center text-slate-500 py-8">No appointments found</p>
-      )}
-    </div>
-
-    {/* BOOK APPOINTMENT MODAL */}
-    {isAppointmentModalOpen && (
-      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-        <div className="bg-white p-6 rounded-xl w-96 shadow-xl">
-          <h2 className="text-xl font-semibold mb-4">Book Appointment</h2>
-
-          <input
-            type="date"
-            name="date"
-            value={appointmentForm.date}
-            onChange={handleAppointmentChange}
-            className="w-full p-2 border rounded mb-3"
-          />
-
-          <input
-            type="time"
-            name="time"
-            value={appointmentForm.time}
-            onChange={handleAppointmentChange}
-            className="w-full p-2 border rounded mb-3"
-          />
-
-          <textarea
-            name="reason"
-            value={appointmentForm.reason}
-            onChange={handleAppointmentChange}
-            placeholder="Reason for appointment"
-            className="w-full p-2 border rounded mb-4"
-          ></textarea>
-
-          <div className="flex justify-end space-x-3">
-            <button
-              onClick={() => setIsAppointmentModalOpen(false)}
-              className="px-4 py-2 bg-gray-300 rounded hover:bg-gray-400 transition"
-            >
-              Cancel
-            </button>
-
-            <button
-              onClick={submitAppointment}
-              className="px-4 py-2 bg-sky-500 text-white rounded hover:bg-sky-600 transition"
-            >
-              Book
-            </button>
-          </div>
-        </div>
-      </div>
-    )}
-
-  </div>
-)}
-
-
 
           {/* Prescriptions Tab */}
           {activeTab === 'prescriptions' && (
@@ -765,9 +817,6 @@ const submitAppointment = async () => {
           )}
         </div>
       </div>
-
-      {/* Book Appointment Tab */}
-{activeTab === 'book' && <PatientAppointmentBooking />}
 
       {/* Upload Modal */}
       {showUploadModal && (

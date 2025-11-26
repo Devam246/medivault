@@ -10,29 +10,42 @@ import {
   respondToAppointment,
   getDoctorAvailability,
   updateDoctorAvailability,
-  getPatientHistoryWithToken
+  getPatientHistoryWithToken  // ✅ Only import once!
 } from "../controllers/appointmentController.js";
 
-import { getPatientHistoryWithToken } from '../controllers/appointmentController.js';
-// Patient Routes
+// ❌ REMOVE THIS DUPLICATE LINE - it was causing the error:
+// import { getPatientHistoryWithToken } from '../controllers/appointmentController.js';
+
+// =======================
+// PATIENT ROUTES
+// =======================
 router.post("/", authenticateToken, requireRole("patient"), bookAppointment);
 router.get("/patient", authenticateToken, requireRole("patient"), getPatientAppointments);
 router.post("/:id/cancel", authenticateToken, requireRole("patient"), cancelAppointment);
 
-// Doctor Routes - IMPORTANT: Specific routes MUST come before general routes
+// =======================
+// DOCTOR ROUTES
+// =======================
+// ⚠️ IMPORTANT: Specific routes MUST come before parameterized routes
 // Put /doctor/availability BEFORE /doctor/:doctorId/slots
+
+// Doctor's own availability settings
 router.get("/doctor/availability", authenticateToken, requireRole("doctor"), getDoctorAvailability);
 router.put("/doctor/availability", authenticateToken, requireRole("doctor"), updateDoctorAvailability);
 
-// This route should come after /doctor/availability to avoid conflicts
-router.get("/doctor/:doctorId/slots", authenticateToken, getAvailableSlots);
-
-// General doctor route - This should be LAST among doctor routes
+// Doctor's appointments list
 router.get("/doctor", authenticateToken, requireRole("doctor"), getDoctorAppointments);
 
-// Appointment response route
+// Respond to appointment (approve/decline)
 router.post("/:id/respond", authenticateToken, requireRole("doctor"), respondToAppointment);
 
-// Patient history access with token (for doctors)
+// Patient history access with token
 router.get("/patient-history/:token", authenticateToken, requireRole("doctor"), getPatientHistoryWithToken);
+
+// =======================
+// SHARED ROUTES (Both Patient & Doctor can access)
+// =======================
+// Get available slots for a specific doctor (patients use this when booking)
+router.get("/doctor/:doctorId/slots", authenticateToken, getAvailableSlots);
+
 export default router;

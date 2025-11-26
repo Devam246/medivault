@@ -40,13 +40,14 @@ app.use((req, res, next) => {
 
 // Static
 app.use("/uploads", express.static("uploads"));
-
+// import summaryRoutes from './routes/summaryRoutes.js';
 // Routes
 app.use("/auth", authRoutes);
 app.use("/patient", patientRoutes);
 app.use("/doctor", doctorRoutes);
 app.use("/appointments", appointmentRoutes);
 app.use('/doctors', doctorsSearchRoutes); // /doctors/search - patients search doctors
+// app.use('/api/summary', summaryRoutes);
 
 // Global error handler
 app.use((err, req, res, next) => {
