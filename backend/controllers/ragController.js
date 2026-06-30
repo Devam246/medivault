@@ -1,6 +1,7 @@
 import { spawn } from "child_process";
 import path from "path";
 import { fileURLToPath } from "url";
+import { getGroqApiKey, getDbPass } from "../config/env.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -20,8 +21,10 @@ export async function patientRagChat(req, res) {
     return res.status(400).json({ success: false, message: "Message is required." });
   }
 
-  const groqKey = (process.env.GROQ_API_KEY || "").trim();
-  if (!groqKey) {
+  let groqKey;
+  try {
+    groqKey = getGroqApiKey().trim();
+  } catch {
     return res.status(500).json({
       success: false,
       message: "GROQ_API_KEY is not configured on the server.",
@@ -45,7 +48,7 @@ export async function patientRagChat(req, res) {
   const childEnv = {
     ...process.env,
     GROQ_API_KEY: groqKey,
-    DB_PASSWORD: process.env.DB_PASS || process.env.DB_PASSWORD || "",
+    DB_PASSWORD: getDbPass(),
     // Pass patient context via env (reduces chance of leaking IDs via process args)
     PATIENT_ID: String(patientId),
   };

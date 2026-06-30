@@ -1,9 +1,9 @@
 import argon2 from "argon2";
+import bcrypt from "bcrypt"; // used only for the legacy rehash-on-login migration
 import jwt from "jsonwebtoken";
 import db from "../config/db.js";
 import crypto from "crypto";
-import dotenv from "dotenv";
-dotenv.config();
+import { getJwtSecret } from "../config/env.js";
 
 // --------------------
 // JWT GENERATORS
@@ -11,7 +11,7 @@ dotenv.config();
 function generateAccessToken(user) {
   return jwt.sign(
     { id: user.id, role: user.role },
-    process.env.JWT_SECRET,
+    getJwtSecret(),
     { expiresIn: "15m" }
   );
 }
@@ -103,8 +103,25 @@ export async function login(req, res) {
 
     if (user.role !== role) return res.status(400).json({ message: "Incorrect role" });
 
-    const valid = await argon2.verify(user.password_hash, password);
-    if (!valid) return res.status(400).json({ message: "Invalid credentials" });
+    // --------------------
+    // BCRYPT → ARGON2 REHASH MIGRATION
+    // Bcrypt hashes start with $2b$ or $2a$. If we detect one, verify with
+    // bcrypt, then immediately re-hash the plaintext with Argon2 and update
+    // the row. After this, the user's hash is Argon2 and this branch never
+    // runs for them again.
+    // --------------------
+    const isBcrypt = user.password_hash.startsWith("$2b$") || user.password_hash.startsWith("$2a$");
+    if (isBcrypt) {
+      const validBcrypt = await bcrypt.compare(password, user.password_hash);
+      if (!validBcrypt) return res.status(400).json({ message: "Invalid credentials" });
+      // Re-hash with Argon2 and persist
+      const newHash = await argon2.hash(password);
+      await db.query("UPDATE users SET password_hash = ? WHERE id = ?", [newHash, user.id]);
+    } else {
+      // Standard Argon2 path
+      const valid = await argon2.verify(user.password_hash, password);
+      if (!valid) return res.status(400).json({ message: "Invalid credentials" });
+    }
 
     if (role === "doctor" && user.is_verified === 0)
       return res.status(403).json({ message: "Doctor not verified by admin yet" });

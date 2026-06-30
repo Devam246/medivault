@@ -1,6 +1,6 @@
 import Web3 from "web3";
 import fs from "fs/promises";
-import https from "https";
+import { getPrivateKey } from "../config/env.js";
 let blockchainContext = null;
 
 async function loadAbi() {
@@ -67,7 +67,7 @@ async function initializeBlockchain() {
   }
 
   const rpcUrl = process.env.SEPOLIA_RPC_URL;
-  const privateKey = process.env.PRIVATE_KEY;
+  const privateKey = getPrivateKey();
   const contractAddress = process.env.CONTRACT_ADDRESS;
 
   if (!rpcUrl || !privateKey || !contractAddress) {
@@ -78,12 +78,7 @@ async function initializeBlockchain() {
   const abi = await loadAbi();
 
 
-
-const web3 = new Web3(new Web3.providers.HttpProvider(rpcUrl, {
-  agent: new https.Agent({
-    rejectUnauthorized: false
-  })
-}));
+  const web3 = new Web3(new Web3.providers.HttpProvider(rpcUrl));
   const account = web3.eth.accounts.privateKeyToAccount(normalizedPrivateKey);
   web3.eth.accounts.wallet.add(account);
   web3.eth.defaultAccount = account.address;

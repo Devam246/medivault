@@ -1,16 +1,15 @@
-import bcrypt from "bcrypt";
+import argon2 from "argon2";
 import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
 import db from "../config/db.js";
+import { getJwtSecret } from "../config/env.js";
 
 dotenv.config();
-
-const SALT_ROUNDS = 10;
 
 function signToken(user) {
   return jwt.sign(
     { id: user.id, role: user.role, email: user.email },
-    process.env.JWT_SECRET,
+    getJwtSecret(),
     { expiresIn: "1d" }
   );
 }
@@ -32,7 +31,7 @@ export async function register(req, res) {
       return res.status(409).json({ success: false, message: "Email already exists" });
     }
 
-    const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
+    const passwordHash = await argon2.hash(password);
     const [result] = await db.query(
       "INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)",
       [name, email, passwordHash, role]
@@ -67,7 +66,7 @@ export async function login(req, res) {
       return res.status(401).json({ success: false, message: "Invalid credentials" });
     }
 
-    const validPassword = await bcrypt.compare(password, user.password_hash);
+    const validPassword = await argon2.verify(user.password_hash, password);
     if (!validPassword) {
       return res.status(401).json({ success: false, message: "Invalid credentials" });
     }

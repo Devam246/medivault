@@ -1,6 +1,5 @@
 import jwt from "jsonwebtoken";
-import dotenv from "dotenv";
-dotenv.config();
+import { getJwtSecret } from "../config/env.js";
 
 // --------------------
 // VERIFY JWT (AUTH MIDDLEWARE)
@@ -12,7 +11,7 @@ export function authenticateToken(req, res, next) {
       return res.status(401).json({ message: "No token provided" });
 
     const token = authHeader.split(" ")[1]; // Bearer token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = jwt.verify(token, getJwtSecret());
 
     req.user = decoded; // { id, role }
     next();

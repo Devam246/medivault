@@ -11,7 +11,6 @@ import fileRoutes from "./routes/fileRoutes.js";
 import apiAuthRoutes from "./routes/apiAuthRoutes.js";
 import apiTestRoutes from "./routes/apiTestRoutes.js";
 import db from "./config/db.js";
-process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 export const app = express();
 (async () => {
   try {
