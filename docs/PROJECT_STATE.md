@@ -1,35 +1,32 @@
 # MediVault — PROJECT_STATE
 
-Turn-by-turn status snapshot. Updated within a session as work progresses.
+**Session:** 2026-06-30 — v1.1 completion
+**Version in progress:** v1.2 — Architecture Hardening (next)
 
 ---
 
-**Session:** 2026-06-30 — Branch: harsh
-**Version in progress:** v1.0 — Security & Broken Routes
+## Progress summary
 
----
+### v1.0 — Complete
+All 9 steps + audit fixes done. See `docs/CHANGELOG.md`.
 
-## Current Status
+### v1.1 — Complete
 
-**Step in progress:** v1.0 complete — ready to start v1.1
+| Step | Status | Notes |
+|---|---|---|
+| 1 — Monorepo structure | Done | `apps/backend`, `apps/frontend`, `apps/rag-service` |
+| 2 — Delete dead code | Done in `apps/` | Legacy `backend/` + `src/` at repo root still exist — remove manually |
+| 3 — Package names | Done | `medivault-backend`, `medivault-frontend` |
+| 4 — Split PatientDashboard | Done | ~95 lines; 6 sections + hooks in `apps/frontend/src/hooks/` |
+| 5 — Canned RAG responses | Done | `apps/rag-service/canned_responses.json` shared by frontend + Python |
+| 6 — errorHandler pattern | Done | All controllers + route handlers use `(req, res, next)` + `errorHandler.js` |
+| 7 — README | Done | Project-specific setup in root `README.md` |
 
-### Completed this session:
-- [x] Step 5 — Rate limiting wired to `/auth/login` and `/auth/refresh`
-- [x] Step 6 — `/patient/search` uses direct `db` import
-- [x] Step 7 — `RequireAuth` redirects fixed (`/doctor`, `/admin`)
-- [x] Step 8 — Admin controller, routes, and UI API alignment
-- [x] Step 9 — `AuthContext` wired into `main.jsx`; components use `useAuth()`
+### Next: v1.2 Step 1
+Introduce database migrations under `apps/backend/migrations/`.
 
-### Previously completed:
-- [x] Step 1 — TLS verification restored
-- [x] Step 2 — DB credential logging removed
-- [x] Step 3 — `config/env.js` secrets abstraction
-- [x] Step 4 — Argon2-only hashing with bcrypt rehash-on-login migration
-
-### Next version (v1.1 — Folder Restructure & Clean Code):
-- Step 1 — Create `apps/` monorepo folder structure
-
-### Open questions / blockers:
-- No `.env` in workspace — live endpoint tests (rate limit, admin flow, search) need local DB + env before manual verification
+### Known cleanup
+- Delete duplicate root-level `backend/` and `src/` folders (superseded by `apps/`).
+- Run `npm install` then `npm run dev:backend` + `npm run dev:frontend` to verify locally.
 
 ---

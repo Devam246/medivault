@@ -12,6 +12,7 @@ dist
 dist-ssr
 *.local
 backend/.env
+apps/backend/.env
 
 # Editor directories and files
 .vscode/*
@@ -29,7 +30,10 @@ __pycache__/
 
 # Uploads
 backend/uploads/
+apps/backend/uploads/
 
 # Generated/runtime files
 backend/records.json
+apps/backend/records.json
 backend/scripts/seed-output.json
+apps/backend/scripts/seed-output.json

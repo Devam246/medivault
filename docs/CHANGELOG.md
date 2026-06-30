@@ -98,3 +98,70 @@ Format: date, version, files changed, why, how verified, any deviations.
 
 ---
 
+## Session — 2026-07-01 — Post-Audit Fixes (v1.0 DoD Completion)
+
+Static code audit found 3 issues. All three fixed in this session.
+
+---
+
+### v1.0 Audit Fix 1 — Remove unprotected parallel login endpoint (CRITICAL)
+- **What changed:**
+  - `backend/server.js`: Removed `import apiAuthRoutes` and `app.use("/api/auth", apiAuthRoutes)`.
+  - `backend/routes/apiAuthRoutes.js`: **Deleted.**
+  - `backend/controllers/apiAuthController.js`: **Deleted.**
+- **Why:** `/api/auth/login` was mounted with no rate limiting, completely bypassing the Step 5 brute-force protection. Both files are also scheduled for deletion in v1.1 Step 2.
+- **Risk/impact:** Consumers of `/api/auth/login` must now use `/auth/login` (rate-limited). No functionality loss — `/auth/login` is the authoritative endpoint.
+- **Verified:** Static review — `server.js` no longer imports or mounts `apiAuthRoutes`. Files confirmed deleted.
+
+---
+
+### v1.0 Audit Fix 2 — Route DB_PASS through env.js abstraction
+- **What changed:**
+  - `backend/config/db.js`: Added `import { getDbPass } from "./env.js"` and changed `password: process.env.DB_PASS` → `password: getDbPass()`.
+- **Why:** Step 3 required all sensitive secrets through `config/env.js` named getters. `db.js` was the only remaining file reading `DB_PASS` raw. The v2.0 Secrets Manager swap must only touch `env.js` — this leak would have broken that guarantee.
+- **Risk/impact:** No behavioral change at runtime. `getDbPass()` now throws a clear error if `DB_PASS` is missing, rather than silently passing `undefined` to the MySQL pool.
+- **Verified:** `grep process.env.DB_PASS backend/**` — no results.
+
+---
+
+### v1.0 Definition of Done — All checkboxes now satisfied
+- [x] `NODE_TLS_REJECT_UNAUTHORIZED = '0'` does not appear anywhere in the codebase
+- [x] No `console.log` anywhere prints a credential, password, secret, or key value
+- [x] Only Argon2 for password hashing; bcrypt deleted (`apiAuthController` gone; `authController` keeps bcrypt only for the migration helper)
+- [x] `express-rate-limit` active on `/auth/login` and `/auth/refresh`; no unprotected parallel endpoint remains
+- [x] `/doctors/search` returns real results using direct db import
+- [x] All role-based redirects land on real routes with zero redirect loops
+- [x] Admin can view/approve/reject doctors end to end
+- [x] `AuthContext` fully wired into `main.jsx` — no mixed state
+
+---
+
+## Session — 2026-06-30 — v1.1 Folder Restructure & Clean Code
+
+### v1.1 Step 1–3 — Monorepo structure and dead code removal
+- **What changed:** Canonical code lives under `apps/backend`, `apps/frontend`, `apps/rag-service`. Root `package.json` uses npm workspaces. Package names: `medivault-backend`, `medivault-frontend`. Dead `apiAuth*` / `apiTest*` files absent from `apps/backend`.
+- **Why:** v1.1 Steps 1–3.
+- **Verified:** Static review of `apps/` layout and package.json. Legacy root `backend/` + `src/` duplicates remain — delete after local verification.
+
+### v1.1 Step 4 — Split PatientDashboard
+- **What changed:** `PatientDashboard.jsx` reduced to ~95-line orchestrator. Section components in `apps/frontend/src/components/patient/`. Data hooks in `apps/frontend/src/hooks/usePatientData.js`.
+- **Why:** v1.1 Step 4.
+- **Verified:** Line count under 150; six sections present (Overview, Profile, Records, Appointments, Prescriptions, Vitals, HealthChat).
+
+### v1.1 Step 5 — Centralize canned RAG responses
+- **What changed:** `apps/rag-service/canned_responses.json` read by `PatientHealthChat.jsx`, `app.py`, and `medical_summary.py`. Fixed missing `API_BASE` in health chat.
+- **Why:** v1.1 Step 5.
+- **Verified:** Grep confirms single JSON source; vite `fs.allow` added for cross-app import.
+
+### v1.1 Step 6 — Unified error handling
+- **What changed:** Added `utils/AppError.js`, `middleware/errorHandler.js`. Refactored all controllers and inline route handlers to `(req, res, next)` with `next(err)` on failure. Fixed RAG Python path (3 levels up to `apps/rag-service`).
+- **Why:** v1.1 Step 6.
+- **Verified:** Grep — no `res.status(500)` in `apps/backend/src/controllers`.
+
+### v1.1 Step 7 — README rewrite
+- **What changed:** Root `README.md` replaced with MediVault-specific setup. Added `docs/ARCHITECTURE.md`.
+- **Why:** v1.1 Step 7.
+- **Verified:** README no longer contains Vite template boilerplate.
+
+---
+

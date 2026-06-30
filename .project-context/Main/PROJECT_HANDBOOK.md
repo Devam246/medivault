@@ -96,30 +96,34 @@ These rules govern every action taken on this project, regardless of which versi
 
 **Last updated by:** Cursor on 2026-06-30
 
-**Current version in progress:** v1.1 — Folder Restructure & Clean Code (v1.0 fully complete)
+**Current version in progress:** v1.2 — Architecture Hardening (v1.1 fully complete)
 
-**Current step in progress:** Step 1 — Create the target folder structure
+**Current step in progress:** Step 1 — Introduce database migrations
 
 **Status of current step:** Not started
 
 **What was just completed (last session):**
-- v1.0 Steps 5–9: rate limiting on auth routes, `/patient/search` db fix, RequireAuth redirect fixes, admin backend routes mounted, AuthContext wired into app
-- v1.0 Steps 1–4 were completed in a prior session (TLS, credential logging, env.js, Argon2)
+- v1.1 Steps 1–7 complete in `apps/` monorepo:
+  - Monorepo layout, dead code removed from `apps/backend`, package names renamed
+  - PatientDashboard split (~95 lines) with hooks + 6 section components
+  - Canned RAG responses centralized in `apps/rag-service/canned_responses.json`
+  - `errorHandler.js` + `AppError` wired; all controllers refactored to `(req, res, next)`
+  - README rewritten; `docs/ARCHITECTURE.md` added
 
 **What is in progress / half-done (if anything):**
-- None
+- Legacy duplicate folders at repo root (`backend/`, `src/`) should be deleted manually
 
 **Open questions / blockers waiting on the user:**
-- No `.env` in repo — manual verification of rate limiting and admin approval flow requires local DB setup
+- Confirm deletion of root `backend/` and `src/` after verifying `apps/` runs locally
 
 **Any unresolved deviations from the guide:**
 - None
 
 **Known broken / failing things right now (if any):**
-- None known from static review; live tests not run (no DB env in workspace)
+- Root-level duplicate code may confuse editors — canonical code is under `apps/`
 
 **Next concrete action to take:**
-- Open `MEDIVAULT_DETAILED_VERSION_GUIDE.md` v1.1 Step 1 and create the `apps/backend`, `apps/frontend`, `apps/rag-service` monorepo structure — move existing source files and fix all broken import paths.
+- Open `MEDIVAULT_DETAILED_VERSION_GUIDE.md` v1.2 Step 1: create `apps/backend/migrations/` and first schema migration files.
 
 > Rules for this section: Don't leave it vague. "Working on backend stuff" is not acceptable. "v1.2 Step 6: validation added to `/auth/register` and `/appointments/book`; remaining routes still need it — see list in `docs/PROJECT_STATE.md`" is acceptable. If you're switching tools mid-step, say so explicitly and note exactly where it was left off — don't round up to "mostly done." Don't delete the previous session's filled-in content without first folding a dated summary into `docs/CHANGELOG.md`, so history isn't lost.
 

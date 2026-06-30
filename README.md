@@ -1,18 +1,66 @@
-# React + Vite
+# MediVault
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+MediVault is a healthcare platform where patients manage medical records, book appointments, and chat with an AI assistant over their own chart data. Doctors access patient history through time-boxed access grants. Records can be hash-anchored on-chain for tamper evidence.
 
-Currently, two official plugins are available:
+## Local development
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+### Prerequisites
 
-## React Compiler
+- Node.js 20+
+- MySQL 8
+- Python 3.9+ (for the RAG service subprocess)
 
-The React Compiler is enabled on this template. See [this documentation](https://react.dev/learn/react-compiler) for more information.
+### Setup
 
-Note: This will impact Vite dev & build performances.
+```bash
+git clone <repo-url>
+cd medivault
+npm install
+```
 
-## Expanding the ESLint configuration
+Create `apps/backend/.env` with at least:
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+```
+PORT=4000
+DB_HOST=localhost
+DB_USER=root
+DB_PASS=your_password
+DB_NAME=medivault
+JWT_SECRET=your_jwt_secret
+PRIVATE_KEY=your_blockchain_private_key
+GROQ_API_KEY=your_groq_key
+```
+
+Seed demo data (optional):
+
+```bash
+npm run seed:demo
+```
+
+### Run
+
+Terminal 1 — API:
+
+```bash
+npm run dev:backend
+```
+
+Terminal 2 — frontend:
+
+```bash
+npm run dev:frontend
+```
+
+- Frontend: http://localhost:5173
+- Backend: http://localhost:4000
+
+## Project layout
+
+```
+apps/backend/     Express API
+apps/frontend/    React + Vite UI
+apps/rag-service/ Python RAG subprocess
+docs/             Changelog, decisions, architecture notes
+```
+
+For deeper system design, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).

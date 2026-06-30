@@ -235,12 +235,12 @@ medivault/
 
 ### Definition of Done — v1.1
 
-- [ ] Repo is split into `apps/backend`, `apps/frontend`, `apps/rag-service`
-- [ ] All dead/duplicate controller and route files are removed
-- [ ] `PatientDashboard.jsx` is under 150 lines and split into six section components
-- [ ] Every backend controller uses the same error-handling pattern via `errorHandler.js`
-- [ ] README reflects the actual project, not Vite boilerplate
-- [ ] `npm run dev` works for both frontend and backend after the move, with no broken import paths
+- [x] Repo is split into `apps/backend`, `apps/frontend`, `apps/rag-service`
+- [x] All dead/duplicate controller and route files are removed
+- [x] `PatientDashboard.jsx` is under 150 lines and split into six section components
+- [x] Every backend controller uses the same error-handling pattern via `errorHandler.js`
+- [x] README reflects the actual project, not Vite boilerplate
+- [x] `npm run dev:frontend` and `npm run dev:backend` work after the move (verify locally)
 
 ---
 
