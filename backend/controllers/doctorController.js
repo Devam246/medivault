@@ -94,6 +94,27 @@ export async function searchPatient(req, res) {
 export async function getPatientHistory(req, res) {
   try {
     const patientId = req.params.id;
+    const doctorId = req.user.id;
+
+    // Enforce time-boxed access granted by patient (easy access) or doctor (emergency access).
+    // We keep the token internal; the doctor never needs to enter/copy it.
+    const [grantRows] = await db.query(
+      `SELECT id, expires_at
+       FROM patient_access_tokens
+       WHERE patient_id = ?
+         AND doctor_id = ?
+         AND is_active = TRUE
+         AND (expires_at IS NULL OR expires_at > NOW())
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [patientId, doctorId]
+    );
+
+    if (grantRows.length === 0) {
+      return res.status(403).json({
+        message: "No active access grant. Ask the patient to tap Easy Access, or use Emergency Access."
+      });
+    }
 
     const [profile] = await db.query(
       `SELECT id, name, email, phone, address, date_of_birth, blood_group, emergency_contact

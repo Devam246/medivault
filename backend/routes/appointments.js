@@ -10,7 +10,9 @@ import {
   respondToAppointment,
   getDoctorAvailability,
   updateDoctorAvailability,
-  getPatientHistoryWithToken  // ✅ Only import once!
+  getPatientHistoryWithToken,  // ✅ Only import once!
+  grantEasyAccess,
+  createEmergencyAccess
 } from "../controllers/appointmentController.js";
 
 // ❌ REMOVE THIS DUPLICATE LINE - it was causing the error:
@@ -41,6 +43,12 @@ router.post("/:id/respond", authenticateToken, requireRole("doctor"), respondToA
 
 // Patient history access with token
 router.get("/patient-history/:token", authenticateToken, requireRole("doctor"), getPatientHistoryWithToken);
+
+// Patient: one-click easy access (30 min) for that appointment's doctor
+router.post("/:id/easy-access", authenticateToken, requireRole("patient"), grantEasyAccess);
+
+// Doctor: emergency access (30 min)
+router.post("/emergency/:patientId", authenticateToken, requireRole("doctor"), createEmergencyAccess);
 
 // =======================
 // SHARED ROUTES (Both Patient & Doctor can access)

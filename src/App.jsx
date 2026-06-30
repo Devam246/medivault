@@ -1,7 +1,6 @@
 import React from 'react'
 import { Navigate } from 'react-router-dom'
 import { Routes, Route } from 'react-router-dom'
-
 import Landing from './pages/Landing'
 import Login from './pages/auth/Login'
 import Register from './pages/auth/Register'
@@ -69,8 +68,6 @@ export default function App(){
         } />
         <Route path="/patient/book-appointment" element={<PatientAppointmentBooking />} />
         <Route path="/doctor/schedule" element={<DoctorScheduleManagement />} />
-
-
         <Route path="*" element={<Navigate to="/" replace />} />
 
       </Routes>

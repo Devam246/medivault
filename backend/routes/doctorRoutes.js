@@ -1,13 +1,14 @@
 import express from "express";
 import {
   getDoctorDashboard,
-  searchPatient
+  searchPatient,
+  getPatientHistory
 } from "../controllers/doctorController.js";
+import { getDoctorAppointments } from "../controllers/appointmentController.js";
 import { createPrescription, getPrescriptionsForPatientByDoctor } from "../controllers/prescriptionController.js";
 import db from "../config/db.js"; //  Add this import
 
 import { authenticateToken, requireRole } from "../middleware/auth.js";
-import { getPatientHistory } from "../controllers/doctorController.js";
 
 const router = express.Router();
 
@@ -17,6 +18,13 @@ router.get(
   authenticateToken,
   requireRole("doctor"),
   getDoctorDashboard
+);
+
+router.get(
+  "/appointments",
+  authenticateToken,
+  requireRole("doctor"),
+  getDoctorAppointments
 );
 
 // Patient search

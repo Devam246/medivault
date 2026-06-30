@@ -6,7 +6,6 @@ import {
   getPatientProfile, 
   updatePatientProfile,
   getMedicalRecords,
-  uploadMedicalRecord,
   deleteMedicalRecord,
   getAppointments,
   bookAppointment,
@@ -15,9 +14,10 @@ import {
   getVitalSigns,
   addVitalSigns,
   getDashboardOverview,
-  upload
 } from "../controllers/patientController.js";
 import { authenticateToken, requireRole } from "../middleware/auth.js";
+import { patientRagChat } from "../controllers/ragController.js";
+import { grantEasyAccess } from "../controllers/appointmentController.js";
 
 const router = express.Router();
 
@@ -35,7 +35,7 @@ router.put("/profile", updatePatientProfile);
 // MEDICAL RECORDS ROUTES
 // =======================
 router.get("/medical-records", getMedicalRecords);
-router.post("/medical-records", upload.single('file'), uploadMedicalRecord);
+// Upload: use POST /files/upload only (hash + blockchain + JSON + MySQL)
 router.delete("/medical-records/:recordId", deleteMedicalRecord);
 
 // =======================
@@ -44,6 +44,7 @@ router.delete("/medical-records/:recordId", deleteMedicalRecord);
 router.get("/appointments", getAppointments);
 router.post("/appointments", bookAppointment);
 router.put("/appointments/:appointmentId/cancel", cancelAppointment);
+router.post("/appointments/:appointmentId/easy-access", grantEasyAccess);
 
 // =======================
 // PRESCRIPTIONS ROUTES
@@ -60,6 +61,11 @@ router.post("/vital-signs", addVitalSigns);
 // DASHBOARD ROUTES
 // =======================
 router.get("/dashboard", getDashboardOverview);
+
+// =======================
+// RAG HEALTH CHAT (Groq + patient history)
+// =======================
+router.post("/rag/chat", patientRagChat);
 
 // =======================
 // SUMMARY ROUTES (TODO: Add these functions to controller if needed)

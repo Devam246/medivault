@@ -50,9 +50,24 @@ function DoctorScheduleManagement() {
     setLoading(true);
     try {
       // Load all appointments
-      const aptsResponse = await fetch(`${API_BASE}/appointments/doctor`, {
+      let aptsResponse = await fetch(`${API_BASE}/appointments/doctor`, {
         headers: { Authorization: `Bearer ${token}` }
       });
+
+      if (!aptsResponse.ok) {
+        const fallbackResponse = await fetch(`${API_BASE}/doctor/appointments`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (fallbackResponse.ok) {
+          aptsResponse = fallbackResponse;
+        }
+      }
+
+      if (!aptsResponse.ok) {
+        const data = await aptsResponse.json().catch(() => ({}));
+        throw new Error(data.message || 'Unable to load doctor appointments');
+      }
+
       const aptsData = await aptsResponse.json();
       const allApts = aptsData.appointments || [];
       
@@ -83,14 +98,22 @@ function DoctorScheduleManagement() {
       });
       
       if (!response.ok) {
-        const contentType = response.headers.get('content-type');
-        if (contentType && contentType.includes('application/json')) {
-          const errorData = await response.json();
-          console.error('Error loading availability:', errorData.message);
-        } else {
-          console.error('Error loading availability: Route not found or server error');
+        const fallbackResponse = await fetch(`${API_BASE}/doctor/availability`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+
+        if (!fallbackResponse.ok) {
+          const contentType = response.headers.get('content-type');
+          if (contentType && contentType.includes('application/json')) {
+            const errorData = await response.json();
+            console.error('Error loading availability:', errorData.message);
+          } else {
+            console.error('Error loading availability: Route not found or server error');
+          }
+          return;
         }
-        return;
+
+        response = fallbackResponse;
       }
       
       const data = await response.json();
@@ -129,7 +152,7 @@ function DoctorScheduleManagement() {
   const handleSaveAvailability = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`${API_BASE}/appointments/doctor/availability`, {
+      let response = await fetch(`${API_BASE}/appointments/doctor/availability`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -137,6 +160,21 @@ function DoctorScheduleManagement() {
         },
         body: JSON.stringify(availability)
       });
+
+      if (!response.ok) {
+        const fallbackResponse = await fetch(`${API_BASE}/doctor/availability`, {
+          method: 'PUT',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(availability)
+        });
+
+        if (fallbackResponse.ok) {
+          response = fallbackResponse;
+        }
+      }
 
       if (!response.ok) {
         const contentType = response.headers.get('content-type');

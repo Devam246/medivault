@@ -1,46 +1,9 @@
 // /mnt/data/patientController.js
 import db from "../config/db.js";
-import multer from "multer";
 import path from "path";
 import fs from "fs";
-import { app } from "../server.js";
 
-// Ensure upload directory exists
-const UPLOAD_DIR = path.join(process.cwd(), "uploads", "medical-records");
-if (!fs.existsSync(UPLOAD_DIR)) {
-  fs.mkdirSync(UPLOAD_DIR, { recursive: true });
-}
-
-// Multer configuration for medical records
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, UPLOAD_DIR);
-  },
-  filename: (req, file, cb) => {
-    // sanitize filename if needed
-    const safeName = file.originalname.replace(/\s+/g, '-');
-    cb(null, `${Date.now()}-${safeName}`);
-  }
-});
-
-export const upload = multer({
-  storage,
-  fileFilter: (req, file, cb) => {
-    // allowed extensions and common mimetypes
-    const allowedExt = /\.(pdf|jpe?g|png|docx?|xlsx?)$/i;
-    const allowedMime = /pdf|jpeg|jpg|png|msword|vnd.openxmlformats-officedocument.wordprocessingml.document/;
-    const extname = allowedExt.test(path.extname(file.originalname).toLowerCase());
-    const mimetype = allowedMime.test(file.mimetype);
-
-    if (extname && mimetype) {
-      return cb(null, true);
-    }
-    cb(new Error("Only PDF, images, and documents are allowed"));
-  },
-  limits: {
-    fileSize: 10 * 1024 * 1024 // 10 MB
-  }
-});
+// Medical file upload is handled only by routes/fileRoutes.js → POST /files/upload
 
 // --------------------
 // GET PATIENT PROFILE
@@ -113,40 +76,6 @@ export async function getMedicalRecords(req, res) {
     return res.json({ records });
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ message: "Server error" });
-  }
-}
-
-// --------------------
-// UPLOAD MEDICAL RECORD
-// --------------------
-export async function uploadMedicalRecord(req, res) {
-  try {
-    const userId = req.user.id;
-    const { title, type, recordDate, notes } = req.body;
-    // multer sets req.file if a file is uploaded
-    const file = req.file;
-
-    const filePath = file ? `/uploads/medical-records/${file.filename}` : null;
-
-    if (!title || !type) {
-      // if multer errored earlier, this code won't run; but handle validation here
-      return res.status(400).json({ message: "Title and type are required" });
-    }
-
-    const [result] = await db.query(
-      `INSERT INTO medical_records 
-        (patient_id, title, type, record_date, file_path, notes, uploaded_by) 
-       VALUES (?, ?, ?, ?, ?, ?, 'patient')`,
-      [userId, title, type, recordDate || new Date(), filePath, notes || null]
-    );
-
-    return res.json({
-      message: "Record uploaded successfully",
-      recordId: result.insertId
-    });
-  } catch (err) {
-    console.error('uploadMedicalRecord error:', err);
     return res.status(500).json({ message: "Server error" });
   }
 }

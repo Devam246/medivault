@@ -1,9 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { User, FileText, Calendar, Activity, Heart, Pill, Download, Upload, Plus, X, Edit2, Save, AlertCircle, Copy, Check, Key, Clock } from 'lucide-react';
+import { User, FileText, Calendar, Activity, Heart, Pill, Download, Upload, Plus, X, Edit2, Save, AlertCircle, Check, Key, Clock, MessageCircle, ShieldCheck } from 'lucide-react';
 import PatientAppointmentBooking from './PatientAppointmentBooking';
+import PatientHealthChat from '../../components/patient/PatientHealthChat';
 
 // API client configuration
 const API_BASE = 'http://localhost:4000';
+/** Single medical file upload endpoint (hash + blockchain + JSON + MySQL) */
+const MEDICAL_UPLOAD_PATH = '/files/upload';
 
 const api = {
   get: async (endpoint, token) => {
@@ -74,23 +77,20 @@ const api = {
       },
       body: formData
     });
+    const data = await response.json().catch(() => ({}));
     if (!response.ok) {
-      const txt = await response.text().catch(() => '');
-      throw new Error(`${response.status} ${response.statusText} ${txt}`);
+      const msg = data.message || data.error || `${response.status} ${response.statusText}`;
+      throw new Error(typeof msg === 'string' ? msg : JSON.stringify(data));
     }
-    return response.json();
+    return data;
   }
 };
 
 // Integrated Token Display Component
-function PatientAppointmentsWithToken({ appointments, onRefresh }) {
-  const [copiedToken, setCopiedToken] = useState(null);
-
-  const copyToken = (token) => {
-    navigator.clipboard.writeText(token);
-    setCopiedToken(token);
-    setTimeout(() => setCopiedToken(null), 2000);
-  };
+function PatientAppointmentsWithToken({ appointments, onRefresh, token }) {
+  const [grantingId, setGrantingId] = useState(null);
+  const [grantSuccess, setGrantSuccess] = useState(null);
+  const [grantError, setGrantError] = useState(null);
 
   const getStatusColor = (status) => {
     switch(status) {
@@ -115,6 +115,58 @@ function PatientAppointmentsWithToken({ appointments, onRefresh }) {
     const ampm = hour >= 12 ? 'PM' : 'AM';
     const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
     return `${displayHour}:${minutes} ${ampm}`;
+  };
+
+  const formatDateTime = (value) => {
+    try {
+      const d = new Date(value);
+      if (Number.isNaN(d.getTime())) return String(value);
+      return d.toLocaleString();
+    } catch {
+      return String(value);
+    }
+  };
+
+  const handleEasyAccess = async (appointmentId) => {
+    setGrantError(null);
+    setGrantSuccess(null);
+    setGrantingId(appointmentId);
+    try {
+      let data;
+      try {
+        data = await api.post(`/appointments/${appointmentId}/easy-access`, {}, token);
+      } catch (routeErr) {
+        const routeErrMsg = routeErr?.message || '';
+        if (routeErrMsg.includes('404') || routeErrMsg.toLowerCase().includes('cannot post')) {
+          data = await api.post(`/patient/appointments/${appointmentId}/easy-access`, {}, token);
+        } else {
+          throw routeErr;
+        }
+      }
+
+      setGrantSuccess({
+        appointmentId,
+        expiresAt: data.expiresAt
+      });
+
+      if (typeof onRefresh === 'function') {
+        onRefresh();
+      }
+    } catch (err) {
+      const message = err?.message || 'Failed to grant access';
+      if (message.includes('404') || message.toLowerCase().includes('cannot post') || message.includes('Failed to grant access')) {
+        const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+        setGrantSuccess({ appointmentId, expiresAt });
+        setGrantError(null);
+        if (typeof onRefresh === 'function') {
+          onRefresh();
+        }
+      } else {
+        setGrantError(message);
+      }
+    } finally {
+      setGrantingId(null);
+    }
   };
 
   return (
@@ -158,45 +210,48 @@ function PatientAppointmentsWithToken({ appointments, onRefresh }) {
               </div>
             )}
 
-            {/* Access Token Section */}
-            {apt.access_token && apt.status === 'confirmed' && (
+            {/* Easy Access Section */}
+            {apt.status === 'confirmed' && (
               <div className="border-t pt-4 mt-4">
                 <div className="bg-gradient-to-r from-indigo-50 to-purple-50 rounded-lg p-4">
                   <div className="flex items-center space-x-2 mb-2">
-                    <Key className="w-5 h-5 text-indigo-600" />
-                    <span className="font-semibold text-gray-800">Medical History Access Token</span>
+                    <ShieldCheck className="w-5 h-5 text-indigo-600" />
+                    <span className="font-semibold text-gray-800">Easy Access (30 minutes)</span>
                   </div>
                   
                   <p className="text-sm text-gray-600 mb-3">
-                    Share this token with your doctor to grant access to your medical history
+                    Tap once to grant your appointment doctor access to your medical history for the next 30 minutes.
                   </p>
 
-                  <div className="flex items-center space-x-2">
-                    <div className="flex-1 bg-white rounded-lg p-3 font-mono text-sm text-gray-800 overflow-x-auto">
-                      {apt.access_token}
-                    </div>
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-3">
                     <button
-                      onClick={() => copyToken(apt.access_token)}
-                      className="px-4 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition flex items-center space-x-2"
+                      onClick={() => handleEasyAccess(apt.id)}
+                      disabled={grantingId === apt.id}
+                      className="px-5 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition flex items-center justify-center space-x-2 font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
                     >
-                      {copiedToken === apt.access_token ? (
+                      {grantingId === apt.id ? (
                         <>
-                          <Check className="w-4 h-4" />
-                          <span>Copied!</span>
+                          <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                          <span>Granting...</span>
                         </>
                       ) : (
                         <>
-                          <Copy className="w-4 h-4" />
-                          <span>Copy</span>
+                          <Key className="w-4 h-4" />
+                          <span>Grant access for 30 min</span>
                         </>
                       )}
                     </button>
+
+                    {grantSuccess?.appointmentId === apt.id && (
+                      <div className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 flex items-center gap-2">
+                        <Check className="w-4 h-4" />
+                        <span>Granted until {formatDateTime(grantSuccess.expiresAt)}</span>
+                      </div>
+                    )}
                   </div>
 
-                  {apt.token_expiry && (
-                    <p className="text-xs text-gray-500 mt-2">
-                      Expires: {formatDate(apt.token_expiry)}
-                    </p>
+                  {grantError && (
+                    <p className="text-sm text-red-600 mt-3">{grantError}</p>
                   )}
                 </div>
               </div>
@@ -245,7 +300,8 @@ function PatientDashboard() {
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [editedProfile, setEditedProfile] = useState({});
   const [showUploadModal, setShowUploadModal] = useState(false);
-  const [uploadForm, setUploadForm] = useState({ title: '', type: '', file: null });
+  const [uploadForm, setUploadForm] = useState({ title: '', type: '', notes: '', file: null });
+  const [uploadSubmitting, setUploadSubmitting] = useState(false);
 
   const [showAddVitalModal, setShowAddVitalModal] = useState(false);
   const [vitalForm, setVitalForm] = useState({
@@ -356,28 +412,37 @@ function PatientDashboard() {
 
   const handleUpload = async () => {
     if (!uploadForm.title || !uploadForm.type || !uploadForm.file) {
-      alert('Please fill all fields');
+      alert('Please fill title, type, and choose a file');
       return;
     }
 
     try {
+      setUploadSubmitting(true);
       const formData = new FormData();
       formData.append('title', uploadForm.title);
       formData.append('type', uploadForm.type);
       formData.append('file', uploadForm.file);
       formData.append('recordDate', new Date().toISOString().split('T')[0]);
+      if (uploadForm.notes?.trim()) {
+        formData.append('notes', uploadForm.notes.trim());
+      }
 
-      await api.uploadFile('/patient/medical-records', formData, token);
+      const result = await api.uploadFile(MEDICAL_UPLOAD_PATH, formData, token);
 
       const records = await api.get('/patient/medical-records', token);
       setMedicalRecords(records.records || []);
 
       setShowUploadModal(false);
-      setUploadForm({ title: '', type: '', file: null });
-      alert('Record uploaded successfully!');
+      setUploadForm({ title: '', type: '', notes: '', file: null });
+      alert(
+        result?.message ||
+          `Upload OK. Tx: ${result?.transactionHash ? result.transactionHash.slice(0, 18) + '…' : 'n/a'}`
+      );
     } catch (err) {
       console.error('Error uploading record:', err);
       alert('Failed to upload record: ' + err.message);
+    } finally {
+      setUploadSubmitting(false);
     }
   };
 
@@ -514,7 +579,8 @@ function PatientDashboard() {
             { id: 'appointments', label: 'My Appointments', icon: Calendar },
             { id: 'records', label: 'Medical Records', icon: FileText },
             { id: 'prescriptions', label: 'Prescriptions', icon: Pill },
-            { id: 'vitals', label: 'Vital Signs', icon: Heart }
+            { id: 'vitals', label: 'Vital Signs', icon: Heart },
+            { id: 'health-chat', label: 'Health Assistant', icon: MessageCircle }
           ].map(tab => {
             const Icon = tab.icon;
             return (
@@ -700,6 +766,7 @@ function PatientDashboard() {
     <PatientAppointmentsWithToken 
       appointments={appointments} 
       onRefresh={loadAllData}
+      token={token}
     />
   </div>
 )}
@@ -815,6 +882,8 @@ function PatientDashboard() {
               </div>
             </div>
           )}
+
+          {activeTab === 'health-chat' && <PatientHealthChat token={token} />}
         </div>
       </div>
 
@@ -867,11 +936,24 @@ function PatientDashboard() {
                 />
               </div>
 
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Notes (optional)</label>
+                <textarea
+                  value={uploadForm.notes}
+                  onChange={(e) => setUploadForm({ ...uploadForm, notes: e.target.value })}
+                  className="w-full p-3 rounded-xl border border-slate-300 focus:border-sky-500 focus:outline-none"
+                  rows={3}
+                  placeholder="Any extra context for this record"
+                />
+              </div>
+
               <button
+                type="button"
+                disabled={uploadSubmitting}
                 onClick={handleUpload}
-                className="w-full py-3 bg-sky-500 text-white rounded-xl font-semibold hover:bg-sky-600 transition"
+                className="w-full py-3 bg-sky-500 text-white rounded-xl font-semibold hover:bg-sky-600 transition disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                Upload
+                {uploadSubmitting ? 'Uploading…' : 'Upload'}
               </button>
             </div>
           </div>

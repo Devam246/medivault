@@ -440,27 +440,12 @@ export async function respondToAppointment(req, res) {
           [appointmentId]
         );
 
-        // Generate and insert token
-        const accessToken = generateAccessToken();
-        const expiresAt = new Date();
-        expiresAt.setMonth(expiresAt.getMonth() + 6);
-
-        const [tokenResult] = await conn.query(
-          `INSERT INTO patient_access_tokens 
-           (patient_id, token, appointment_id, doctor_id, expires_at, is_active, created_at)
-           VALUES (?, ?, ?, ?, ?, TRUE, NOW())`,
-          [appointment.patient_id, accessToken, appointmentId, doctorId, expiresAt]
-        );
-
         // Commit transaction
         await conn.commit();
 
         return res.json({
           message: "Appointment approved successfully",
-          status: 'confirmed',
-          accessToken,
-          tokenExpiry: expiresAt,
-          tokenId: tokenResult.insertId
+          status: 'confirmed'
         });
 
       } catch (err) {
@@ -582,5 +567,112 @@ export async function getPatientHistoryWithToken(req, res) {
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Server error" });
+  }
+}
+
+// =======================
+// PATIENT: GRANT EASY ACCESS (30 MIN)
+// =======================
+export async function grantEasyAccess(req, res) {
+  try {
+    const appointmentId = req.params.id || req.params.appointmentId;
+    const patientId = req.user.id;
+
+    const [rows] = await db.query(
+      `SELECT id, patient_id, doctor_id, status
+       FROM appointments
+       WHERE id = ?`,
+      [appointmentId]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ message: "Appointment not found" });
+    }
+
+    const apt = rows[0];
+    if (String(apt.patient_id) !== String(patientId)) {
+      return res.status(403).json({ message: "You don't have permission to grant access for this appointment" });
+    }
+
+    if (apt.status !== "confirmed") {
+      return res.status(400).json({ message: "Access can only be granted for confirmed appointments" });
+    }
+
+    const doctorId = apt.doctor_id;
+
+    // Deactivate any existing active grants for this doctor+patient pair
+    await db.query(
+      `UPDATE patient_access_tokens
+       SET is_active = FALSE
+       WHERE patient_id = ?
+         AND doctor_id = ?
+         AND is_active = TRUE`,
+      [patientId, doctorId]
+    );
+
+    const token = generateAccessToken(); // internal only, not shown to users
+    const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
+
+    await db.query(
+      `INSERT INTO patient_access_tokens
+       (patient_id, token, appointment_id, doctor_id, expires_at, is_active, created_at)
+       VALUES (?, ?, ?, ?, ?, TRUE, NOW())`,
+      [patientId, token, appointmentId, doctorId, expiresAt]
+    );
+
+    return res.json({
+      message: "Access granted for 30 minutes",
+      expiresAt
+    });
+  } catch (err) {
+    console.error("Error in grantEasyAccess:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+}
+
+// =======================
+// DOCTOR: EMERGENCY ACCESS (30 MIN)
+// =======================
+export async function createEmergencyAccess(req, res) {
+  try {
+    const doctorId = req.user.id;
+    const patientId = req.params.patientId;
+
+    const [patientRows] = await db.query(
+      `SELECT id FROM users WHERE id = ? AND role = 'patient'`,
+      [patientId]
+    );
+
+    if (patientRows.length === 0) {
+      return res.status(404).json({ message: "Patient not found" });
+    }
+
+    // Deactivate any existing active grants for this doctor+patient pair
+    await db.query(
+      `UPDATE patient_access_tokens
+       SET is_active = FALSE
+       WHERE patient_id = ?
+         AND doctor_id = ?
+         AND is_active = TRUE`,
+      [patientId, doctorId]
+    );
+
+    const token = generateAccessToken(); // internal only
+    const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
+
+    await db.query(
+      `INSERT INTO patient_access_tokens
+       (patient_id, token, appointment_id, doctor_id, expires_at, is_active, created_at)
+       VALUES (?, ?, NULL, ?, ?, TRUE, NOW())`,
+      [patientId, token, doctorId, expiresAt]
+    );
+
+    return res.json({
+      message: "Emergency access granted for 30 minutes",
+      expiresAt
+    });
+  } catch (err) {
+    console.error("Error in createEmergencyAccess:", err);
+    return res.status(500).json({ message: "Server error" });
   }
 }
