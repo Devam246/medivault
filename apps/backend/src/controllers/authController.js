@@ -1,19 +1,11 @@
 import argon2 from "argon2";
 import bcrypt from "bcrypt"; // used only for the legacy rehash-on-login migration
 import jwt from "jsonwebtoken";
-import db from "../config/db.js";
 import crypto from "crypto";
 import { getJwtSecret } from "../config/env.js";
 import { AppError } from "../utils/AppError.js";
-import { isMongoEnabled } from "../config/mongo.js";
-import {
-  createUser,
-  getRefreshTokenByRawToken,
-  getUserByEmail,
-  getUserById,
-  insertRefreshToken,
-  updateUserPasswordHash,
-} from "../repositories/mongoRepository.js";
+import * as userRepository from "../repositories/userRepository.js";
+import * as refreshTokenRepository from "../repositories/refreshTokenRepository.js";
 
 // --------------------
 // JWT GENERATORS
@@ -45,32 +37,17 @@ export async function registerPatient(req, res, next) {
     if (!name || !email || !password)
       return res.status(400).json({ message: "All fields are required" });
 
-    if (isMongoEnabled()) {
-      const existing = await getUserByEmail(email);
-      if (existing) return res.status(400).json({ message: "Email already registered" });
-
-      const password_hash = await argon2.hash(password);
-      await createUser({
-        name,
-        email,
-        password_hash,
-        role: "patient",
-        is_verified: 1,
-      });
-      return res.json({ message: "Patient registered successfully" });
-    }
-
-    // Check if email exists
-    const [existing] = await db.query("SELECT id FROM users WHERE email = ?", [email]);
-    if (existing.length) return res.status(400).json({ message: "Email already registered" });
+    const existing = await userRepository.getUserByEmail(email);
+    if (existing) return res.status(400).json({ message: "Email already registered" });
 
     const password_hash = await argon2.hash(password);
-
-    await db.query(
-      "INSERT INTO users (name, email, password_hash, role, is_verified) VALUES (?, ?, ?, 'patient', 1)",
-      [name, email, password_hash]
-    );
-
+    await userRepository.createUser({
+      name,
+      email,
+      password_hash,
+      role: "patient",
+      is_verified: 1,
+    });
     return res.json({ message: "Patient registered successfully" });
 
   } catch (err) {
@@ -90,37 +67,20 @@ export async function registerDoctor(req, res, next) {
     if (!name || !email || !password || !regNumber || !degree)
       return res.status(400).json({ message: "All fields are required" });
 
-    if (isMongoEnabled()) {
-      const existing = await getUserByEmail(email);
-      if (existing) return res.status(400).json({ message: "Email already registered" });
-
-      const password_hash = await argon2.hash(password);
-      await createUser({
-        name,
-        email,
-        password_hash,
-        role: "doctor",
-        reg_number: regNumber,
-        degree,
-        document_path: documentPath,
-        is_verified: 0,
-      });
-      return res.json({ message: "Doctor registration submitted for admin approval" });
-    }
-
-    // Check if email exists
-    const [existing] = await db.query("SELECT id FROM users WHERE email = ?", [email]);
-    if (existing.length) return res.status(400).json({ message: "Email already registered" });
+    const existing = await userRepository.getUserByEmail(email);
+    if (existing) return res.status(400).json({ message: "Email already registered" });
 
     const password_hash = await argon2.hash(password);
-
-    await db.query(
-      `INSERT INTO users 
-        (name, email, password_hash, role, reg_number, degree, document_path, is_verified) 
-       VALUES (?, ?, ?, 'doctor', ?, ?, ?, ?)`,
-      [name, email, password_hash, regNumber, degree, documentPath, 0] // 0 → pending
-    );
-
+    await userRepository.createUser({
+      name,
+      email,
+      password_hash,
+      role: "doctor",
+      reg_number: regNumber,
+      degree,
+      document_path: documentPath,
+      is_verified: 0,
+    });
     return res.json({ message: "Doctor registration submitted for admin approval" });
 
   } catch (err) {
@@ -138,9 +98,7 @@ export async function login(req, res, next) {
     if (!email || !password || !role)
       return res.status(400).json({ message: "All fields are required" });
 
-    const user = isMongoEnabled()
-      ? await getUserByEmail(email)
-      : (await db.query("SELECT * FROM users WHERE email = ?", [email]))[0][0];
+    const user = await userRepository.getUserByEmail(email);
     if (!user) return res.status(400).json({ message: "Invalid credentials" });
 
     if (user.role !== role) return res.status(400).json({ message: "Incorrect role" });
@@ -158,11 +116,7 @@ export async function login(req, res, next) {
       if (!validBcrypt) return res.status(400).json({ message: "Invalid credentials" });
       // Re-hash with Argon2 and persist
       const newHash = await argon2.hash(password);
-      if (isMongoEnabled()) {
-        await updateUserPasswordHash(user.id, newHash);
-      } else {
-        await db.query("UPDATE users SET password_hash = ? WHERE id = ?", [newHash, user.id]);
-      }
+      await userRepository.updateUserPasswordHash(user.id, newHash);
     } else {
       // Standard Argon2 path
       const valid = await argon2.verify(user.password_hash, password);
@@ -174,14 +128,11 @@ export async function login(req, res, next) {
 
     // JWTs
     const accessToken = generateAccessToken(user);
-    const refreshToken = generateRefreshToken();
+    const rawToken = generateRefreshToken();
+    const refreshToken = `${user.id}.${rawToken}`;
     const refreshHash = await hashToken(refreshToken);
 
-    if (isMongoEnabled()) {
-      await insertRefreshToken(user.id, refreshHash, refreshToken);
-    } else {
-      await db.query("INSERT INTO refresh_tokens (user_id, token_hash) VALUES (?, ?)", [user.id, refreshHash]);
-    }
+    await refreshTokenRepository.insertRefreshToken(user.id, refreshHash, refreshToken);
 
     return res.json({
       token: accessToken,
@@ -202,33 +153,32 @@ export async function refresh(req, res, next) {
     const { refreshToken } = req.body;
     if (!refreshToken) throw new AppError("Missing token", 400, "VALIDATION_ERROR");
 
-    if (isMongoEnabled()) {
-      const storedToken = await getRefreshTokenByRawToken(refreshToken);
-      if (!storedToken || !(await argon2.verify(storedToken.token_hash, refreshToken))) {
-        throw new AppError("Invalid refresh token", 403, "INVALID_TOKEN");
-      }
-
-      const user = await getUserById(storedToken.user_id);
-      if (!user) throw new AppError("Invalid refresh token", 403, "INVALID_TOKEN");
-
-      const newAccessToken = generateAccessToken(user);
-      return res.json({ token: newAccessToken });
+    const parts = refreshToken.split(".");
+    if (parts.length !== 2) {
+      throw new AppError("Invalid refresh token", 403, "INVALID_TOKEN");
     }
 
-    const [rows] = await db.query("SELECT * FROM refresh_tokens");
-    let storedToken = null;
+    const userId = Number(parts[0]);
+    if (isNaN(userId)) {
+      throw new AppError("Invalid refresh token", 403, "INVALID_TOKEN");
+    }
 
-    for (const row of rows) {
-      if (await argon2.verify(row.token_hash, refreshToken)) {
-        storedToken = row;
+    // Get active tokens for the specific user (indexed lookup)
+    const storedTokens = await refreshTokenRepository.getRefreshTokensByUserId(userId);
+    let matchedToken = null;
+
+    for (const tokenRow of storedTokens) {
+      if (await argon2.verify(tokenRow.token_hash, refreshToken)) {
+        matchedToken = tokenRow;
         break;
       }
     }
 
-    if (!storedToken) throw new AppError("Invalid refresh token", 403, "INVALID_TOKEN");
+    if (!matchedToken) throw new AppError("Invalid refresh token", 403, "INVALID_TOKEN");
 
-    const [users] = await db.query("SELECT * FROM users WHERE id = ?", [storedToken.user_id]);
-    const user = users[0];
+    const user = await userRepository.getUserById(userId);
+    if (!user) throw new AppError("Invalid refresh token", 403, "INVALID_TOKEN");
+
     const newAccessToken = generateAccessToken(user);
 
     return res.json({ token: newAccessToken });

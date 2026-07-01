@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { FileText, Upload, Download, X } from 'lucide-react';
+import { FileText, Upload, Download, Trash2, X } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useMedicalRecords } from '../../hooks/usePatientData';
 import api, { API_BASE, MEDICAL_UPLOAD_PATH } from '../../api/patientApi';
@@ -50,6 +50,17 @@ export default function MedicalRecordsSection() {
     document.body.removeChild(a);
   };
 
+  const deleteRecord = async (record) => {
+    if (!confirm('Delete this medical record?')) return;
+    try {
+      await api.delete(`/patient/medical-records/${record.id}`, token);
+      await refetch();
+      alert('Record deleted successfully');
+    } catch (err) {
+      alert('Failed to delete record: ' + err.message);
+    }
+  };
+
   if (loading) return <p className="text-slate-500">Loading records…</p>;
   if (error) return <p className="text-red-600">{error}</p>;
 
@@ -79,10 +90,16 @@ export default function MedicalRecordsSection() {
                   <p className="text-xs text-slate-500">{record.record_date}</p>
                 </div>
               </div>
-              <Download
-                className="w-5 h-5 text-slate-400 cursor-pointer hover:text-sky-500"
-                onClick={() => downloadRecord(record)}
-              />
+              <div className="flex items-center gap-3">
+                <button type="button" aria-label={`Download ${record.title}`} onClick={() => downloadRecord(record)}
+                  className="text-slate-400 hover:text-sky-500 transition">
+                  <Download className="w-5 h-5" />
+                </button>
+                <button type="button" aria-label={`Delete ${record.title}`} onClick={() => deleteRecord(record)}
+                  className="text-slate-400 hover:text-red-500 transition">
+                  <Trash2 className="w-5 h-5" />
+                </button>
+              </div>
             </div>
           ))}
           {!records.length && <p className="text-center text-slate-500 py-8">No medical records found</p>}

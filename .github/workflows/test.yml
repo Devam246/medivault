@@ -1,0 +1,111 @@
+name: MediVault Test Suite
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  # ─────────────────────────────────────────────
+  # Job 1: Backend Unit + Integration Tests
+  # ─────────────────────────────────────────────
+  backend-tests:
+    name: Backend Tests (Jest)
+    runs-on: ubuntu-latest
+
+    # Spin up MongoDB so integration tests can connect if not using in-memory
+    # (our tests use mongodb-memory-server so no external service needed)
+
+    env:
+      NODE_ENV: test
+      JWT_SECRET: ci-jwt-secret
+      JWT_REFRESH_SECRET: ci-refresh-secret
+      DATA_STORE: mongo
+      MONGO_URI: mongodb://localhost:27017/medivault_test
+      DB_PASS: ci-db-pass
+      PRIVATE_KEY: "0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+      GROQ_API_KEY: ci-groq-key
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Run backend unit tests
+        working-directory: apps/backend
+        run: npm run test:unit
+
+      - name: Run backend integration tests
+        working-directory: apps/backend
+        run: npm run test:integration
+
+  # ─────────────────────────────────────────────
+  # Job 2: Frontend Component Tests (Vitest)
+  # ─────────────────────────────────────────────
+  frontend-unit-tests:
+    name: Frontend Component Tests (Vitest)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Run frontend component tests
+        working-directory: apps/frontend
+        run: npm test
+
+  # ─────────────────────────────────────────────
+  # Job 3: Frontend E2E Tests (Cypress)
+  # ─────────────────────────────────────────────
+  frontend-e2e-tests:
+    name: Frontend E2E Tests (Cypress)
+    runs-on: ubuntu-latest
+    needs: frontend-unit-tests   # only run E2E if component tests pass
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Build frontend for E2E
+        working-directory: apps/frontend
+        run: npm run build
+
+      - name: Run Cypress E2E tests
+        working-directory: apps/frontend
+        run: |
+          npm run preview -- --host 127.0.0.1 --port 5173 > preview.log 2>&1 &
+          for i in {1..30}; do
+            if curl -fsS http://localhost:5173 >/dev/null 2>&1; then
+              break
+            fi
+            sleep 2
+          done
+          curl -fsS http://localhost:5173 >/dev/null
+          npm run test:e2e

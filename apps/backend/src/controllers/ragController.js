@@ -49,14 +49,30 @@ export async function patientRagChat(req, res, next) {
 
     let stdout = "";
     let stderr = "";
+    let timedOut = false;
+
+    const timeoutId = setTimeout(() => {
+      timedOut = true;
+      console.error(`[RAG TIMEOUT] RAG subprocess timed out after 30 seconds, killing pid ${child.pid}`);
+      child.kill("SIGKILL");
+    }, 30000);
 
     child.stdout.on("data", (d) => { stdout += d.toString(); });
     child.stderr.on("data", (d) => { stderr += d.toString(); });
 
-    child.on("error", (err) => next(err));
+    child.on("error", (err) => {
+      clearTimeout(timeoutId);
+      next(err);
+    });
 
     child.on("close", (code) => {
+      clearTimeout(timeoutId);
       if (res.headersSent) return;
+
+      if (timedOut) {
+        return next(new AppError("RAG service request timed out.", 504, "TIMEOUT_ERROR"));
+      }
+
       if (stderr) console.error("[python rag stderr]", stderr);
       try {
         const trimmed = stdout.trim();
