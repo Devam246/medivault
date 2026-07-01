@@ -96,8 +96,10 @@ app.use("/files", fileRoutes);
 // Global error handler
 app.use(errorHandler);
 
-app.listen(4000, () => {
-  console.log("Server running on port 4000");
-});
+if (process.env.NODE_ENV !== "test") {
+  app.listen(4000, () => {
+    console.log("Server running on port 4000");
+  });
+}
 
 export default app;

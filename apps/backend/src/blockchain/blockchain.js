@@ -2,6 +2,7 @@ import Web3 from "web3";
 import fs from "fs/promises";
 import { getPrivateKey } from "../config/env.js";
 let blockchainContext = null;
+//comment
 
 async function loadAbi() {
   if (process.env.CONTRACT_ABI_JSON) {
