@@ -1,5 +1,18 @@
 # MediVault — CHANGELOG
 
+## Session - 2026-07-01 - v2.3 Database Modernization
+
+### v2.3 Step 1-5 - MySQL to MongoDB Migration and Startup Checks
+- **What changed:**
+  - Added `apps/backend/scripts/migrateToMongo.js` to migrate users, doctor profiles, appointments, medical records, prescriptions, vitals, refresh tokens, patient access tokens, and access logs from MySQL to MongoDB.
+  - Added automatic counter sequence initialization in MongoDB's `counters` collection for sequential IDs.
+  - Configured `"migrate:mongo"` scripts in backend `package.json` and root `package.json`.
+  - Updated `apps/backend/src/server.js` to initialize and connect to MongoDB and run index validation at startup when `DATA_STORE=mongo` is enabled.
+- **Why:** To shift the primary data store from MySQL to MongoDB as planned in the v2.3 version guide.
+- **Verified:** Performed syntax checking via `node --check` on the updated files and confirmed standard scripts are properly wired.
+
+---
+
 ## Session - 2026-07-01 - v1.2 Architecture Hardening Start
 
 ### v1.2 Step 1 - Introduce database migrations

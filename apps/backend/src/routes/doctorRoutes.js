@@ -6,6 +6,8 @@ import {
 } from "../controllers/doctorController.js";
 import { getDoctorAppointments, getDoctorAvailability, updateDoctorAvailability } from "../controllers/appointmentController.js";
 import { createPrescription, getPrescriptionsForPatientByDoctor } from "../controllers/prescriptionController.js";
+import { validateRequest } from "../middleware/validate.js";
+import { createPrescriptionSchema } from "../validators/doctorValidator.js";
 
 import { authenticateToken, requireRole } from "../middleware/auth.js";
 
@@ -42,7 +44,7 @@ router.get(
 );
 
 // New: create prescription
-router.post("/prescriptions", authenticateToken, requireRole("doctor"), createPrescription);
+router.post("/prescriptions", authenticateToken, requireRole("doctor"), validateRequest(createPrescriptionSchema), createPrescription);
 
 // Optional: doctor view prescriptions for a patient
 router.get("/prescriptions/patient/:patientId", authenticateToken, requireRole("doctor"), getPrescriptionsForPatientByDoctor);

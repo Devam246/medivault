@@ -28,7 +28,7 @@ export async function closeMongo() {
 export async function ensureMongoIndexes() {
   const db = await getMongoDb();
 
-  await db.collection("counters").createIndex({ _id: 1 }, { unique: true });
+  // _id is automatically indexed and unique in MongoDB by default.
 
   await db.collection("users").createIndex({ id: 1 }, { unique: true });
   await db.collection("users").createIndex({ email: 1 }, { unique: true });

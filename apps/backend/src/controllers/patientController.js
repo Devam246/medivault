@@ -4,6 +4,7 @@ import { AppError } from "../utils/AppError.js";
 import path from "path";
 import fs from "fs";
 import { isMongoEnabled } from "../config/mongo.js";
+import { logAccess } from "../repositories/accessLogRepository.js";
 import {
   createAppointment as createMongoAppointment,
   createVitalSign,
@@ -131,6 +132,17 @@ export async function deleteMedicalRecord(req, res, next) {
         return res.status(404).json({ message: "Record not found" });
       }
       await deleteMongoMedicalRecord(recordId);
+      
+      await logAccess({
+        actor_user_id: userId,
+        patient_id: userId,
+        action: "DELETE_MEDICAL_RECORD",
+        entity_type: "medical_records",
+        entity_id: recordId,
+        metadata: { title: record.title, type: record.type },
+        ip_address: req.ip,
+      });
+
       if (record.file_path) {
         const fullPath = path.join(process.cwd(), record.file_path);
         try {
@@ -156,6 +168,16 @@ export async function deleteMedicalRecord(req, res, next) {
 
     // Delete DB row
     await db.query("DELETE FROM medical_records WHERE id = ?", [recordId]);
+
+    await logAccess({
+      actor_user_id: userId,
+      patient_id: userId,
+      action: "DELETE_MEDICAL_RECORD",
+      entity_type: "medical_records",
+      entity_id: recordId,
+      metadata: { title: record.title, type: record.type },
+      ip_address: req.ip,
+    });
 
     // Remove file from disk if present
     if (record.file_path) {

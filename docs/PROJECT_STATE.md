@@ -1,7 +1,7 @@
 # MediVault - PROJECT_STATE
 
-**Session:** 2026-07-01 - v1.2 start
-**Version in progress:** v1.2 - Architecture Hardening
+**Session:** 2026-07-01 - v2.3 complete
+**Version completed:** v2.3 - Database Modernization
 
 ---
 
@@ -22,17 +22,27 @@ All 9 steps + audit fixes done. See `docs/CHANGELOG.md`.
 | 6 - errorHandler pattern | Done | Controllers and route handlers use `(req, res, next)` + `errorHandler.js` |
 | 7 - README | Done | Project-specific setup in root `README.md` |
 
-### v1.2 - In Progress
+### v1.2 - Complete
 
 | Step | Status | Notes |
 |---|---|---|
-| 1 - Database migrations | In progress | Added `apps/backend/migrations/` and `npm run migrate`; live MySQL verification pending |
+| 1 - Database migrations | Done | Added `apps/backend/migrations/` and `npm run migrate`; local MySQL migrations verified |
+
+### v2.3 - Complete
+
+| Step | Status | Notes |
+|---|---|---|
+| 1 - MongoDB compatibility layer | Done | Repository abstraction handles MySQL and MongoDB paths |
+| 2 - Document model & indexes | Done | Configured core collections and indexes in `mongo.js` |
+| 3 - Migration pipeline | Done | Standalone `migrateToMongo.js` script with automatic sequence counters |
+| 4 - Replace backend flows | Done | Integrated MongoDB paths in all backend controller flows |
+| 5 - Cut over & connection checks | Done | Updated `server.js` to connect and check MongoDB indexes when enabled |
 
 ### Next
-Wrap medical file upload in a transaction and decouple blockchain anchoring from the upload response.
+Proceed with testing and improvements of Version 1 (v1.3 - Integration Testing) against MongoDB/MySQL.
 
 ### Known Cleanup
 - Delete or archive duplicate root-level `backend/` once any remaining generated/output files are confirmed unnecessary.
-- Run `npm install`, `npm run migrate`, then `npm run dev:backend` + `npm run dev:frontend` to verify locally.
+- Configure MongoDB environment variables (`MONGO_URI` / `MONGO_DB_NAME`) in `apps/backend/.env`.
 
 ---

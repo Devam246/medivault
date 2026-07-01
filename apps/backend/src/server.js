@@ -12,6 +12,7 @@ import appointmentRoutes from "./routes/appointments.js";
 import doctorsSearchRoutes from './routes/doctors.js';
 import fileRoutes from "./routes/fileRoutes.js";
 import db from "./config/db.js";
+import { isMongoEnabled, getMongoDb, ensureMongoIndexes } from "./config/mongo.js";
 import { authenticateToken } from "./middleware/auth.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 
@@ -20,12 +21,22 @@ const __dirname = dirname(__filename);
 const UPLOAD_DIR = resolve(__dirname, "../uploads");
 export const app = express();
 (async () => {
-  try {
-    const conn = await db.getConnection();
-    console.log("✅ MySQL Connected Successfully");
-    conn.release();
-  } catch (err) {
-    console.error("❌ MySQL Connection Failed:", err.message);
+  if (isMongoEnabled()) {
+    try {
+      await getMongoDb();
+      await ensureMongoIndexes();
+      console.log("✅ MongoDB Connected & Indexes Ensured Successfully");
+    } catch (err) {
+      console.error("❌ MongoDB Connection Failed:", err.message);
+    }
+  } else {
+    try {
+      const conn = await db.getConnection();
+      console.log("✅ MySQL Connected Successfully");
+      conn.release();
+    } catch (err) {
+      console.error("❌ MySQL Connection Failed:", err.message);
+    }
   }
 })();
 const allowedOrigin = "http://localhost:5173";

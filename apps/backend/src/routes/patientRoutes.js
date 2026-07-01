@@ -21,6 +21,10 @@ import {
 import { authenticateToken, requireRole } from "../middleware/auth.js";
 import { patientRagChat } from "../controllers/ragController.js";
 import { grantEasyAccess } from "../controllers/appointmentController.js";
+import { validateRequest } from "../middleware/validate.js";
+import { updatePatientProfileSchema, addVitalSignsSchema } from "../validators/patientValidator.js";
+import { bookAppointmentSchema, grantEasyAccessParamsSchema } from "../validators/appointmentValidator.js";
+import { patientRagChatSchema } from "../validators/ragValidator.js";
 
 const router = express.Router();
 
@@ -32,7 +36,7 @@ router.use(requireRole('patient'));
 // PROFILE ROUTES
 // =======================
 router.get("/profile", getPatientProfile);
-router.put("/profile", updatePatientProfile);
+router.put("/profile", validateRequest(updatePatientProfileSchema), updatePatientProfile);
 
 // =======================
 // MEDICAL RECORDS ROUTES
@@ -45,9 +49,9 @@ router.delete("/medical-records/:recordId", deleteMedicalRecord);
 // APPOINTMENTS ROUTES
 // =======================
 router.get("/appointments", getAppointments);
-router.post("/appointments", bookAppointment);
+router.post("/appointments", validateRequest(bookAppointmentSchema), bookAppointment);
 router.put("/appointments/:appointmentId/cancel", cancelAppointment);
-router.post("/appointments/:appointmentId/easy-access", grantEasyAccess);
+router.post("/appointments/:appointmentId/easy-access", validateRequest(grantEasyAccessParamsSchema), grantEasyAccess);
 
 // =======================
 // PRESCRIPTIONS ROUTES
@@ -58,7 +62,7 @@ router.get("/prescriptions", getPrescriptions);
 // VITAL SIGNS ROUTES
 // =======================
 router.get("/vital-signs", getVitalSigns);
-router.post("/vital-signs", addVitalSigns);
+router.post("/vital-signs", validateRequest(addVitalSignsSchema), addVitalSigns);
 
 // =======================
 // DASHBOARD ROUTES
@@ -68,7 +72,7 @@ router.get("/dashboard", getDashboardOverview);
 // =======================
 // RAG HEALTH CHAT (Groq + patient history)
 // =======================
-router.post("/rag/chat", patientRagChat);
+router.post("/rag/chat", validateRequest(patientRagChatSchema), patientRagChat);
 
 // =======================
 // SUMMARY ROUTES (TODO: Add these functions to controller if needed)

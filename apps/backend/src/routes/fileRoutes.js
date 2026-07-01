@@ -11,6 +11,8 @@ import { authenticateToken } from "../middleware/auth.js";
 import db from "../config/db.js";
 import { isMongoEnabled } from "../config/mongo.js";
 import { createMedicalRecord } from "../repositories/mongoRepository.js";
+import { validateRequest } from "../middleware/validate.js";
+import { uploadFileSchema } from "../validators/fileValidator.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -90,7 +92,10 @@ async function writeRecords(records) {
 }
 
 
-router.post("/upload", authenticateToken, runUpload, async (req, res, next) => {
+import { updateMedicalRecordBlockchain } from "../repositories/medicalRecordRepository.js";
+import { logAccess } from "../repositories/accessLogRepository.js";
+
+router.post("/upload", authenticateToken, runUpload, validateRequest(uploadFileSchema), async (req, res, next) => {
   console.log("[UPLOAD HIT]", new Date().toISOString(), {
     userId: req.user?.id,
     role: req.user?.role,
@@ -100,14 +105,9 @@ router.post("/upload", authenticateToken, runUpload, async (req, res, next) => {
     return res.status(400).json({ success: false, message: "No file uploaded" });
   }
 
-  console.log("[UPLOAD] File received:", {
-    filename: req.file.filename,
-    size: req.file.size,
-    mimetype: req.file.mimetype,
-  });
-
   const role = req.user.role;
   if (!["patient", "doctor"].includes(role)) {
+    await fs.unlink(req.file.path).catch(() => {});
     return res.status(403).json({
       success: false,
       message: "Only patient or doctor accounts can upload medical files",
@@ -115,40 +115,22 @@ router.post("/upload", authenticateToken, runUpload, async (req, res, next) => {
   }
 
   const { title, type, recordDate, notes, patient_id } = req.body;
-
-  if (!title || !type) {
-    return res.status(400).json({
-      success: false,
-      message: "Title and type are required",
-    });
-  }
-
-  if (role === "doctor" && !patient_id) {
-    return res.status(400).json({
-      success: false,
-      message: "patient_id is required for doctor uploads",
-    });
-  }
-
   const filePath = `/uploads/${req.file.filename}`;
+  const actualPatientId = role === "patient" ? req.user.id : patient_id;
+  const actualDoctorId = role === "doctor" ? req.user.id : null;
+  const dbRecordDate = recordDate || new Date().toISOString().split("T")[0];
+
+  let mysqlConnection = null;
+  let jsonRecordsRevert = null;
 
   try {
     const fileBuffer = await fs.readFile(req.file.path);
     const fileHash = crypto.createHash("sha256").update(fileBuffer).digest("hex");
     console.log("[UPLOAD] Hash generated (sha256):", fileHash);
 
-    console.log("[UPLOAD] Calling addRecordToBlockchain (await)...");
-    const chainResult = await addRecordToBlockchain(fileHash);
-    console.log("[UPLOAD] Blockchain transaction success:", {
-      transactionHash: chainResult.transactionHash,
-      blockNumber: chainResult.blockNumber,
-    });
-
+    // Save to records.json first
     const records = await readRecords();
-    const nextId = records.length
-      ? Math.max(...records.map((r) => Number(r.id) || 0)) + 1
-      : 1;
-
+    const nextId = records.length ? Math.max(...records.map((r) => Number(r.id) || 0)) + 1 : 1;
     const jsonRecord = {
       id: nextId,
       userId: req.user.id,
@@ -157,102 +139,124 @@ router.post("/upload", authenticateToken, runUpload, async (req, res, next) => {
       type,
       fileHash,
       filePath,
-      owner: chainResult.owner,
-      transactionHash: chainResult.transactionHash,
-      blockNumber: chainResult.blockNumber,
+      owner: "pending",
+      transactionHash: "pending",
+      blockNumber: "pending",
       timestamp: new Date().toISOString(),
     };
-
     records.push(jsonRecord);
     await writeRecords(records);
-    console.log("[UPLOAD] Appended to records.json, id:", nextId);
+    
+    // Setup revert for json
+    jsonRecordsRevert = async () => {
+      const current = await readRecords();
+      await writeRecords(current.filter(r => r.id !== nextId));
+    };
 
-    let mysqlRecordId = null;
+    let recordId = null;
 
-    if (role === "patient") {
-      if (isMongoEnabled()) {
-        const record = await createMedicalRecord({
-          patient_id: req.user.id,
-          doctor_id: null,
-          title,
-          type,
-          record_date: recordDate || new Date().toISOString().split("T")[0],
-          file_path: filePath,
-          file_name: req.file.filename,
-          file_hash: fileHash,
-          transaction_hash: chainResult.transactionHash,
-          block_number: chainResult.blockNumber,
-          notes: notes || null,
-          uploaded_by: "patient",
-        });
-        mysqlRecordId = record.id;
-        console.log("[UPLOAD] Mongo row inserted (patient), id:", mysqlRecordId);
-      } else {
-      const [result] = await db.query(
-        `INSERT INTO medical_records
-          (patient_id, title, type, record_date, file_path, notes, uploaded_by)
-         VALUES (?, ?, ?, ?, ?, ?, 'patient')`,
-        [
-          req.user.id,
-          title,
-          type,
-          recordDate || new Date().toISOString().split("T")[0],
-          filePath,
-          notes || null,
-        ]
-      );
-      mysqlRecordId = result.insertId;
-      console.log("[UPLOAD] MySQL row inserted (patient), id:", mysqlRecordId);
-      }
+    if (isMongoEnabled()) {
+      // MongoDB approach
+      const record = await createMedicalRecord({
+        patient_id: actualPatientId,
+        doctor_id: actualDoctorId,
+        title,
+        type,
+        record_date: dbRecordDate,
+        file_path: filePath,
+        file_name: req.file.filename,
+        file_hash: fileHash,
+        transaction_hash: "pending",
+        block_number: null,
+        notes: notes || null,
+        uploaded_by: role,
+      });
+      recordId = record.id;
     } else {
-      if (isMongoEnabled()) {
-        const record = await createMedicalRecord({
-          patient_id,
-          doctor_id: req.user.id,
-          title,
-          type,
-          record_date: recordDate || new Date().toISOString().split("T")[0],
-          file_path: filePath,
-          file_name: req.file.filename,
-          file_hash: fileHash,
-          transaction_hash: chainResult.transactionHash,
-          block_number: chainResult.blockNumber,
-          notes: notes || null,
-          uploaded_by: "doctor",
-        });
-        mysqlRecordId = record.id;
-        console.log("[UPLOAD] Mongo row inserted (doctor), id:", mysqlRecordId);
-      } else {
-      const [result] = await db.query(
-        `INSERT INTO medical_records
-          (patient_id, title, type, record_date, file_path, notes, uploaded_by)
-         VALUES (?, ?, ?, ?, ?, ?, 'doctor')`,
+      // MySQL Transaction
+      mysqlConnection = await db.getConnection();
+      await mysqlConnection.beginTransaction();
+      
+      const [result] = await mysqlConnection.query(
+        `INSERT INTO medical_records 
+          (patient_id, doctor_id, title, type, record_date, file_path, file_name, file_hash, transaction_hash, block_number, notes, uploaded_by) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
-          patient_id,
+          actualPatientId,
+          actualDoctorId,
           title,
           type,
-          recordDate || new Date().toISOString().split("T")[0],
+          dbRecordDate,
           filePath,
+          req.file.filename,
+          fileHash,
+          "pending",
+          null,
           notes || null,
+          role,
         ]
       );
-      mysqlRecordId = result.insertId;
-      console.log("[UPLOAD] MySQL row inserted (doctor), id:", mysqlRecordId);
-      }
+      recordId = result.insertId;
+      await mysqlConnection.commit();
+      mysqlConnection.release();
+      mysqlConnection = null;
     }
+
+    // Background Async Blockchain Anchoring
+    setTimeout(async () => {
+      try {
+        console.log(`[BACKGROUND] Anchoring fileHash: ${fileHash} to blockchain...`);
+        const chainResult = await addRecordToBlockchain(fileHash);
+        console.log(`[BACKGROUND] Anchored fileHash: ${fileHash}. Tx: ${chainResult.transactionHash}`);
+
+        // Update DB
+        await updateMedicalRecordBlockchain(recordId, chainResult.transactionHash, chainResult.blockNumber);
+
+        // Update JSON
+        const updatedRecords = await readRecords();
+        const rec = updatedRecords.find(r => r.id === nextId);
+        if (rec) {
+          rec.transactionHash = chainResult.transactionHash;
+          rec.blockNumber = chainResult.blockNumber;
+          rec.owner = chainResult.owner;
+          await writeRecords(updatedRecords);
+        }
+      } catch (err) {
+        console.error(`[BACKGROUND] Blockchain anchoring failed for fileHash: ${fileHash}`, err);
+      }
+    }, 0);
+
+    // Audit Log
+    await logAccess({
+      actor_user_id: req.user.id,
+      patient_id: actualPatientId,
+      action: "UPLOAD_MEDICAL_RECORD",
+      entity_type: "medical_records",
+      entity_id: recordId,
+      metadata: { fileHash, type, role },
+      ip_address: req.ip,
+    });
 
     return res.json({
       success: true,
-      message: "Upload completed: file stored, blockchain confirmed, record saved",
+      message: "Upload completed: file stored, blockchain confirming in background, record saved",
       fileHash,
       filePath,
       filename: req.file.filename,
-      transactionHash: chainResult.transactionHash,
-      blockNumber: chainResult.blockNumber,
       jsonRecordId: nextId,
-      mysqlRecordId,
+      mysqlRecordId: recordId,
     });
+
   } catch (error) {
+    console.error("[UPLOAD] Error occurred, cleaning up...", error.message);
+    if (mysqlConnection) {
+      await mysqlConnection.rollback();
+      mysqlConnection.release();
+    }
+    if (jsonRecordsRevert) {
+      await jsonRecordsRevert().catch(e => console.error("JSON revert failed", e));
+    }
+    await fs.unlink(req.file.path).catch(e => console.error("File deletion failed", e));
     next(error);
   }
 });

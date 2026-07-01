@@ -2,6 +2,7 @@ import db from "../config/db.js";
 import crypto from "crypto";
 import { AppError } from "../utils/AppError.js";
 import { isMongoEnabled } from "../config/mongo.js";
+import { logAccess } from "../repositories/accessLogRepository.js";
 import {
   createAppointment as createMongoAppointment,
   createPatientAccessToken,
@@ -333,24 +334,6 @@ export async function bookAppointment(req, res, next) {
     await conn.beginTransaction();
 
     try {
-      // Check for any existing appointment (confirmed OR pending)
-      const [existingRows] = await conn.query(
-        `SELECT id, status FROM appointments 
-         WHERE doctor_id = ? 
-         AND appointment_date = ? 
-         AND appointment_time = ? 
-         AND status IN ('confirmed', 'pending')
-         FOR UPDATE`,
-        [doctor_id, appointment_date, appointment_time]
-      );
-
-      if (existingRows.length > 0) {
-        await conn.rollback();
-        return res.status(409).json({ 
-          message: "This time slot is already booked or pending. Please select another time." 
-        });
-      }
-
       const [result] = await conn.query(
         `INSERT INTO appointments 
          (patient_id, doctor_id, appointment_date, appointment_time, reason, status, created_at) 
@@ -369,6 +352,11 @@ export async function bookAppointment(req, res, next) {
 
     } catch (err) {
       await conn.rollback();
+      if (err.code === 'ER_DUP_ENTRY') {
+        return res.status(409).json({
+          message: "This time slot is already booked or pending. Please select another time."
+        });
+      }
       throw err;
     }
 
@@ -539,7 +527,16 @@ export async function respondToAppointment(req, res, next) {
       if (appointment.status !== 'pending') {
         return res.status(400).json({ message: `Appointment is already ${appointment.status}` });
       }
-      await updateAppointmentStatus(appointmentId, action === "approve" ? "confirmed" : "cancelled");
+      try {
+        await updateAppointmentStatus(appointmentId, action === "approve" ? "confirmed" : "cancelled");
+      } catch (err) {
+        if (err.code === 11000) {
+          return res.status(409).json({
+            message: "This time slot has already been confirmed or is pending for another patient."
+          });
+        }
+        throw err;
+      }
       return res.json({
         message: action === "approve" ? "Appointment approved successfully" : "Appointment declined successfully",
         status: action === "approve" ? "confirmed" : "cancelled"
@@ -568,15 +565,14 @@ export async function respondToAppointment(req, res, next) {
       await conn.beginTransaction();
 
       try {
-        // Check for time slot conflicts with lock
+        // Check for time slot conflicts without lock
         const [conflictRows] = await conn.query(
           `SELECT id FROM appointments 
            WHERE doctor_id = ? 
            AND appointment_date = ? 
            AND appointment_time = ? 
            AND status = 'confirmed'
-           AND id != ?
-           FOR UPDATE`,
+           AND id != ?`,
           [doctorId, appointment.appointment_date, appointment.appointment_time, appointmentId]
         );
 
@@ -648,6 +644,17 @@ export async function getPatientHistoryWithToken(req, res, next) {
       if (!bundle.profile) {
         return res.status(404).json({ message: "Patient not found" });
       }
+
+      await logAccess({
+        actor_user_id: doctorId,
+        patient_id: tokenData.patient_id,
+        action: "view_patient_history",
+        entity_type: "patient",
+        entity_id: tokenData.patient_id,
+        metadata: { method: "token", token_id: tokenData.id },
+        ip_address: req.ip,
+      });
+
       return res.json({
         ...bundle,
         tokenInfo: {
@@ -718,6 +725,16 @@ export async function getPatientHistoryWithToken(req, res, next) {
        WHERE patient_id=? ORDER BY appointment_date DESC`,
       [patientId]
     );
+
+    await logAccess({
+      actor_user_id: doctorId,
+      patient_id: patientId,
+      action: "view_patient_history",
+      entity_type: "patient",
+      entity_id: patientId,
+      metadata: { method: "token", token_id: tokenData.id },
+      ip_address: req.ip,
+    });
 
     return res.json({
       profile: profile[0],
