@@ -9,6 +9,8 @@ import { dirname } from "path";
 import { addRecordToBlockchain } from "../blockchain/blockchain.js";
 import { authenticateToken } from "../middleware/auth.js";
 import db from "../config/db.js";
+import { isMongoEnabled } from "../config/mongo.js";
+import { createMedicalRecord } from "../repositories/mongoRepository.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -168,6 +170,24 @@ router.post("/upload", authenticateToken, runUpload, async (req, res, next) => {
     let mysqlRecordId = null;
 
     if (role === "patient") {
+      if (isMongoEnabled()) {
+        const record = await createMedicalRecord({
+          patient_id: req.user.id,
+          doctor_id: null,
+          title,
+          type,
+          record_date: recordDate || new Date().toISOString().split("T")[0],
+          file_path: filePath,
+          file_name: req.file.filename,
+          file_hash: fileHash,
+          transaction_hash: chainResult.transactionHash,
+          block_number: chainResult.blockNumber,
+          notes: notes || null,
+          uploaded_by: "patient",
+        });
+        mysqlRecordId = record.id;
+        console.log("[UPLOAD] Mongo row inserted (patient), id:", mysqlRecordId);
+      } else {
       const [result] = await db.query(
         `INSERT INTO medical_records
           (patient_id, title, type, record_date, file_path, notes, uploaded_by)
@@ -183,7 +203,26 @@ router.post("/upload", authenticateToken, runUpload, async (req, res, next) => {
       );
       mysqlRecordId = result.insertId;
       console.log("[UPLOAD] MySQL row inserted (patient), id:", mysqlRecordId);
+      }
     } else {
+      if (isMongoEnabled()) {
+        const record = await createMedicalRecord({
+          patient_id,
+          doctor_id: req.user.id,
+          title,
+          type,
+          record_date: recordDate || new Date().toISOString().split("T")[0],
+          file_path: filePath,
+          file_name: req.file.filename,
+          file_hash: fileHash,
+          transaction_hash: chainResult.transactionHash,
+          block_number: chainResult.blockNumber,
+          notes: notes || null,
+          uploaded_by: "doctor",
+        });
+        mysqlRecordId = record.id;
+        console.log("[UPLOAD] Mongo row inserted (doctor), id:", mysqlRecordId);
+      } else {
       const [result] = await db.query(
         `INSERT INTO medical_records
           (patient_id, title, type, record_date, file_path, notes, uploaded_by)
@@ -199,6 +238,7 @@ router.post("/upload", authenticateToken, runUpload, async (req, res, next) => {
       );
       mysqlRecordId = result.insertId;
       console.log("[UPLOAD] MySQL row inserted (doctor), id:", mysqlRecordId);
+      }
     }
 
     return res.json({

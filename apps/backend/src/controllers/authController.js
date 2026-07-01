@@ -5,6 +5,15 @@ import db from "../config/db.js";
 import crypto from "crypto";
 import { getJwtSecret } from "../config/env.js";
 import { AppError } from "../utils/AppError.js";
+import { isMongoEnabled } from "../config/mongo.js";
+import {
+  createUser,
+  getRefreshTokenByRawToken,
+  getUserByEmail,
+  getUserById,
+  insertRefreshToken,
+  updateUserPasswordHash,
+} from "../repositories/mongoRepository.js";
 
 // --------------------
 // JWT GENERATORS
@@ -36,6 +45,21 @@ export async function registerPatient(req, res, next) {
     if (!name || !email || !password)
       return res.status(400).json({ message: "All fields are required" });
 
+    if (isMongoEnabled()) {
+      const existing = await getUserByEmail(email);
+      if (existing) return res.status(400).json({ message: "Email already registered" });
+
+      const password_hash = await argon2.hash(password);
+      await createUser({
+        name,
+        email,
+        password_hash,
+        role: "patient",
+        is_verified: 1,
+      });
+      return res.json({ message: "Patient registered successfully" });
+    }
+
     // Check if email exists
     const [existing] = await db.query("SELECT id FROM users WHERE email = ?", [email]);
     if (existing.length) return res.status(400).json({ message: "Email already registered" });
@@ -65,6 +89,24 @@ export async function registerDoctor(req, res, next) {
 
     if (!name || !email || !password || !regNumber || !degree)
       return res.status(400).json({ message: "All fields are required" });
+
+    if (isMongoEnabled()) {
+      const existing = await getUserByEmail(email);
+      if (existing) return res.status(400).json({ message: "Email already registered" });
+
+      const password_hash = await argon2.hash(password);
+      await createUser({
+        name,
+        email,
+        password_hash,
+        role: "doctor",
+        reg_number: regNumber,
+        degree,
+        document_path: documentPath,
+        is_verified: 0,
+      });
+      return res.json({ message: "Doctor registration submitted for admin approval" });
+    }
 
     // Check if email exists
     const [existing] = await db.query("SELECT id FROM users WHERE email = ?", [email]);
@@ -96,8 +138,9 @@ export async function login(req, res, next) {
     if (!email || !password || !role)
       return res.status(400).json({ message: "All fields are required" });
 
-    const [rows] = await db.query("SELECT * FROM users WHERE email = ?", [email]);
-    const user = rows[0];
+    const user = isMongoEnabled()
+      ? await getUserByEmail(email)
+      : (await db.query("SELECT * FROM users WHERE email = ?", [email]))[0][0];
     if (!user) return res.status(400).json({ message: "Invalid credentials" });
 
     if (user.role !== role) return res.status(400).json({ message: "Incorrect role" });
@@ -115,7 +158,11 @@ export async function login(req, res, next) {
       if (!validBcrypt) return res.status(400).json({ message: "Invalid credentials" });
       // Re-hash with Argon2 and persist
       const newHash = await argon2.hash(password);
-      await db.query("UPDATE users SET password_hash = ? WHERE id = ?", [newHash, user.id]);
+      if (isMongoEnabled()) {
+        await updateUserPasswordHash(user.id, newHash);
+      } else {
+        await db.query("UPDATE users SET password_hash = ? WHERE id = ?", [newHash, user.id]);
+      }
     } else {
       // Standard Argon2 path
       const valid = await argon2.verify(user.password_hash, password);
@@ -130,7 +177,11 @@ export async function login(req, res, next) {
     const refreshToken = generateRefreshToken();
     const refreshHash = await hashToken(refreshToken);
 
-    await db.query("INSERT INTO refresh_tokens (user_id, token_hash) VALUES (?, ?)", [user.id, refreshHash]);
+    if (isMongoEnabled()) {
+      await insertRefreshToken(user.id, refreshHash, refreshToken);
+    } else {
+      await db.query("INSERT INTO refresh_tokens (user_id, token_hash) VALUES (?, ?)", [user.id, refreshHash]);
+    }
 
     return res.json({
       token: accessToken,
@@ -150,6 +201,19 @@ export async function refresh(req, res, next) {
   try {
     const { refreshToken } = req.body;
     if (!refreshToken) throw new AppError("Missing token", 400, "VALIDATION_ERROR");
+
+    if (isMongoEnabled()) {
+      const storedToken = await getRefreshTokenByRawToken(refreshToken);
+      if (!storedToken || !(await argon2.verify(storedToken.token_hash, refreshToken))) {
+        throw new AppError("Invalid refresh token", 403, "INVALID_TOKEN");
+      }
+
+      const user = await getUserById(storedToken.user_id);
+      if (!user) throw new AppError("Invalid refresh token", 403, "INVALID_TOKEN");
+
+      const newAccessToken = generateAccessToken(user);
+      return res.json({ token: newAccessToken });
+    }
 
     const [rows] = await db.query("SELECT * FROM refresh_tokens");
     let storedToken = null;

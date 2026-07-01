@@ -1,6 +1,23 @@
 import db from "../config/db.js";
 import crypto from "crypto";
 import { AppError } from "../utils/AppError.js";
+import { isMongoEnabled } from "../config/mongo.js";
+import {
+  createAppointment as createMongoAppointment,
+  createPatientAccessToken,
+  deactivateAccessTokens,
+  findActiveAccessToken,
+  findAppointmentById,
+  getBookedTimes,
+  getDoctorProfile,
+  getPatientHistoryBundle,
+  getUserById,
+  listAppointmentsByDoctor,
+  listAppointmentsByPatient,
+  markAccessTokenUsed,
+  updateAppointmentStatus,
+  upsertDoctorProfile,
+} from "../repositories/mongoRepository.js";
 
 // Helper function to generate access token
 function generateAccessToken() {
@@ -35,6 +52,44 @@ export async function getDoctorAvailability(req, res, next) {
   try {
     const doctorId = req.user.id;
     
+    if (isMongoEnabled()) {
+      const profile = await getDoctorProfile(doctorId);
+      if (!profile) {
+        const defaultAvailability = {
+          monday: { enabled: true, start: '09:00', end: '17:00' },
+          tuesday: { enabled: true, start: '09:00', end: '17:00' },
+          wednesday: { enabled: true, start: '09:00', end: '17:00' },
+          thursday: { enabled: true, start: '09:00', end: '17:00' },
+          friday: { enabled: true, start: '09:00', end: '17:00' },
+          saturday: { enabled: false, start: '09:00', end: '13:00' },
+          sunday: { enabled: false, start: '09:00', end: '13:00' }
+        };
+        return res.json({ availability: defaultAvailability });
+      }
+
+      const availableDays = profile.available_days ? profile.available_days.split(',') : [];
+      const dayMap = { 'Mon': 'monday', 'Tue': 'tuesday', 'Wed': 'wednesday', 'Thu': 'thursday', 
+                       'Fri': 'friday', 'Sat': 'saturday', 'Sun': 'sunday' };
+      const availability = {
+        monday: { enabled: false, start: '09:00', end: '17:00' },
+        tuesday: { enabled: false, start: '09:00', end: '17:00' },
+        wednesday: { enabled: false, start: '09:00', end: '17:00' },
+        thursday: { enabled: false, start: '09:00', end: '17:00' },
+        friday: { enabled: false, start: '09:00', end: '17:00' },
+        saturday: { enabled: false, start: '09:00', end: '13:00' },
+        sunday: { enabled: false, start: '09:00', end: '13:00' }
+      };
+      availableDays.forEach(shortDay => {
+        const longDay = dayMap[shortDay];
+        if (longDay) {
+          availability[longDay].enabled = true;
+          availability[longDay].start = String(profile.available_time_start || '09:00').substring(0, 5);
+          availability[longDay].end = String(profile.available_time_end || '17:00').substring(0, 5);
+        }
+      });
+      return res.json({ availability });
+    }
+
     const [rows] = await db.query(
       `SELECT * FROM doctor_profiles WHERE user_id = ?`,
       [doctorId]
@@ -104,6 +159,15 @@ export async function updateDoctorAvailability(req, res, next) {
       }
     });
 
+    if (isMongoEnabled()) {
+      await upsertDoctorProfile(doctorId, {
+        available_days: availableDays.join(','),
+        available_time_start: earliestStart,
+        available_time_end: latestEnd,
+      });
+      return res.json({ message: "Availability updated successfully" });
+    }
+
     await db.query(
       `UPDATE doctor_profiles 
        SET available_days = ?, 
@@ -130,6 +194,29 @@ export async function getAvailableSlots(req, res, next) {
 
     if (!date) {
       return res.status(400).json({ message: "Date parameter required" });
+    }
+
+    if (isMongoEnabled()) {
+      const profile = await getDoctorProfile(doctorId);
+      if (!profile) {
+        return res.status(404).json({ message: "Doctor not found" });
+      }
+
+      const dayOfWeek = new Date(date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short' });
+      const availableDays = profile.available_days ? profile.available_days.split(',') : [];
+      if (!availableDays.includes(dayOfWeek)) {
+        return res.json({ message: "Doctor not available on this day", slots: [] });
+      }
+
+      const startTime = profile.available_time_start || '09:00:00';
+      const endTime = profile.available_time_end || '17:00:00';
+      const slotDuration = profile.slot_duration || 30;
+      const slots = generateTimeSlots(startTime, endTime, slotDuration);
+      const bookedTimes = await getBookedTimes(doctorId, date);
+      return res.json({
+        date,
+        slots: slots.map((slot) => ({ time: slot, available: !bookedTimes.has(slot) })),
+      });
     }
 
     const [profileRows] = await db.query(
@@ -203,6 +290,36 @@ export async function bookAppointment(req, res, next) {
       });
     }
 
+    if (isMongoEnabled()) {
+      const doctor = await getUserById(doctor_id);
+      if (!doctor || doctor.role !== "doctor" || doctor.is_verified !== 1) {
+        return res.status(404).json({ message: "Doctor not found or not verified" });
+      }
+
+      try {
+        const appointment = await createMongoAppointment({
+          patient_id,
+          doctor_id,
+          appointment_date,
+          appointment_time,
+          reason: reason || null,
+          status: "pending",
+        });
+        return res.json({
+          message: "Appointment requested successfully! Waiting for doctor confirmation.",
+          appointmentId: appointment.id,
+          status: 'pending'
+        });
+      } catch (err) {
+        if (err.code === 11000) {
+          return res.status(409).json({
+            message: "This time slot is already booked or pending. Please select another time."
+          });
+        }
+        throw err;
+      }
+    }
+
     const [doctorRows] = await db.query(
       `SELECT id FROM users WHERE id = ? AND role = 'doctor' AND is_verified = 1`,
       [doctor_id]
@@ -270,6 +387,11 @@ export async function getPatientAppointments(req, res, next) {
   try {
     const patientId = req.user.id;
 
+    if (isMongoEnabled()) {
+      const appointments = await listAppointmentsByPatient(patientId);
+      return res.json({ appointments });
+    }
+
     const [appointments] = await db.query(
       `SELECT 
         a.id,
@@ -311,6 +433,23 @@ export async function cancelAppointment(req, res, next) {
     const appointmentId = req.params.id;
     const patientId = req.user.id;
 
+    if (isMongoEnabled()) {
+      const appointment = await findAppointmentById(appointmentId);
+      if (!appointment || Number(appointment.patient_id) !== Number(patientId)) {
+        return res.status(404).json({
+          message: "Appointment not found or you don't have permission to cancel it"
+        });
+      }
+
+      const appointmentDateTime = new Date(`${appointment.appointment_date}T${appointment.appointment_time}`);
+      if (appointmentDateTime < new Date()) {
+        return res.status(400).json({ message: "Cannot cancel past appointments" });
+      }
+
+      await updateAppointmentStatus(appointmentId, "cancelled");
+      return res.json({ message: "Appointment cancelled successfully" });
+    }
+
     const [existingRows] = await db.query(
       `SELECT * FROM appointments WHERE id = ? AND patient_id = ?`,
       [appointmentId, patientId]
@@ -350,6 +489,11 @@ export async function getDoctorAppointments(req, res, next) {
   try {
     const doctorId = req.user.id;
 
+    if (isMongoEnabled()) {
+      const appointments = await listAppointmentsByDoctor(doctorId);
+      return res.json({ appointments });
+    }
+
     const [appointments] = await db.query(
       `SELECT 
         a.*, 
@@ -385,6 +529,21 @@ export async function respondToAppointment(req, res, next) {
 
     if (!['approve', 'decline'].includes(action)) {
       return res.status(400).json({ message: "Invalid action. Use 'approve' or 'decline'" });
+    }
+
+    if (isMongoEnabled()) {
+      const appointment = await findAppointmentById(appointmentId);
+      if (!appointment || Number(appointment.doctor_id) !== Number(doctorId)) {
+        return res.status(404).json({ message: "Appointment not found or you don't have permission" });
+      }
+      if (appointment.status !== 'pending') {
+        return res.status(400).json({ message: `Appointment is already ${appointment.status}` });
+      }
+      await updateAppointmentStatus(appointmentId, action === "approve" ? "confirmed" : "cancelled");
+      return res.json({
+        message: action === "approve" ? "Appointment approved successfully" : "Appointment declined successfully",
+        status: action === "approve" ? "confirmed" : "cancelled"
+      });
     }
 
     // Get appointment details first (outside transaction)
@@ -478,6 +637,27 @@ export async function getPatientHistoryWithToken(req, res, next) {
     const { token } = req.params;
     const doctorId = req.user.id;
 
+    if (isMongoEnabled()) {
+      const tokenData = await findActiveAccessToken(token, doctorId);
+      if (!tokenData) {
+        return res.status(403).json({ message: "Invalid or expired token" });
+      }
+
+      await markAccessTokenUsed(tokenData.id);
+      const bundle = await getPatientHistoryBundle(tokenData.patient_id);
+      if (!bundle.profile) {
+        return res.status(404).json({ message: "Patient not found" });
+      }
+      return res.json({
+        ...bundle,
+        tokenInfo: {
+          appointmentId: tokenData.appointment_id,
+          createdAt: tokenData.created_at,
+          expiresAt: tokenData.expires_at
+        }
+      });
+    }
+
     const [tokenRows] = await db.query(
       `SELECT * FROM patient_access_tokens 
        WHERE token = ? 
@@ -565,6 +745,31 @@ export async function grantEasyAccess(req, res, next) {
     const appointmentId = req.params.id || req.params.appointmentId;
     const patientId = req.user.id;
 
+    if (isMongoEnabled()) {
+      const apt = await findAppointmentById(appointmentId);
+      if (!apt) {
+        return res.status(404).json({ message: "Appointment not found" });
+      }
+      if (String(apt.patient_id) !== String(patientId)) {
+        return res.status(403).json({ message: "You don't have permission to grant access for this appointment" });
+      }
+      if (apt.status !== "confirmed") {
+        return res.status(400).json({ message: "Access can only be granted for confirmed appointments" });
+      }
+
+      await deactivateAccessTokens(patientId, apt.doctor_id);
+      const token = generateAccessToken();
+      const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
+      await createPatientAccessToken({
+        patient_id: patientId,
+        token,
+        appointment_id: appointmentId,
+        doctor_id: apt.doctor_id,
+        expires_at: expiresAt,
+      });
+      return res.json({ message: "Access granted for 30 minutes", expiresAt });
+    }
+
     const [rows] = await db.query(
       `SELECT id, patient_id, doctor_id, status
        FROM appointments
@@ -623,6 +828,25 @@ export async function createEmergencyAccess(req, res, next) {
   try {
     const doctorId = req.user.id;
     const patientId = req.params.patientId;
+
+    if (isMongoEnabled()) {
+      const patient = await getUserById(patientId);
+      if (!patient || patient.role !== "patient") {
+        return res.status(404).json({ message: "Patient not found" });
+      }
+
+      await deactivateAccessTokens(patientId, doctorId);
+      const token = generateAccessToken();
+      const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
+      await createPatientAccessToken({
+        patient_id: patientId,
+        token,
+        appointment_id: null,
+        doctor_id: doctorId,
+        expires_at: expiresAt,
+      });
+      return res.json({ message: "Emergency access granted for 30 minutes", expiresAt });
+    }
 
     const [patientRows] = await db.query(
       `SELECT id FROM users WHERE id = ? AND role = 'patient'`,

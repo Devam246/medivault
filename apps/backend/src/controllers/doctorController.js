@@ -1,9 +1,42 @@
 import db from "../config/db.js";
 import { AppError } from "../utils/AppError.js";
+import { isMongoEnabled } from "../config/mongo.js";
+import {
+  findActiveGrant,
+  getPatientHistoryBundle,
+  listAppointmentsByDoctor,
+  listMedicalRecords,
+  listPrescriptionsForDoctorPatient,
+  searchPatients,
+} from "../repositories/mongoRepository.js";
 
 export async function getDoctorDashboard(req, res, next) {
   try {
     const doctorId = req.user.id;
+
+    if (isMongoEnabled()) {
+      const appointments = await listAppointmentsByDoctor(doctorId);
+      const today = new Date().toISOString().slice(0, 10);
+      const todayAppointments = appointments
+        .filter((appointment) => appointment.appointment_date === today)
+        .sort((a, b) => String(a.appointment_time).localeCompare(String(b.appointment_time)));
+      const totalPatients = new Set(appointments.map((appointment) => appointment.patient_id)).size;
+      const recentPrescriptions = [];
+      const recentRecords = (await Promise.all(
+        [...new Set(appointments.map((appointment) => appointment.patient_id))]
+          .map((patientId) => listMedicalRecords(patientId, 5))
+      )).flat()
+        .filter((record) => Number(record.doctor_id) === Number(doctorId))
+        .sort((a, b) => String(b.record_date).localeCompare(String(a.record_date)))
+        .slice(0, 5);
+
+      return res.json({
+        todayAppointments,
+        totalPatients,
+        recentPrescriptions,
+        recentRecords,
+      });
+    }
 
     const [todayAppointments] = await db.query(
       `SELECT a.*, u.name AS patient_name FROM appointments a
@@ -50,6 +83,11 @@ export async function searchPatient(req, res, next) {
       return res.json({ patients: [] });
     }
 
+    if (isMongoEnabled()) {
+      const patients = await searchPatients(query);
+      return res.json({ patients });
+    }
+
     const [patients] = await db.query(
       `SELECT id, name, email, phone, blood_group FROM users
        WHERE role='patient' AND (id = ? OR name LIKE ? OR email LIKE ? OR phone LIKE ?)`,
@@ -66,6 +104,23 @@ export async function getPatientHistory(req, res, next) {
   try {
     const patientId = req.params.id;
     const doctorId = req.user.id;
+
+    if (isMongoEnabled()) {
+      const grant = await findActiveGrant(patientId, doctorId);
+      if (!grant) {
+        throw new AppError(
+          "No active access grant. Ask the patient to tap Easy Access, or use Emergency Access.",
+          403,
+          "ACCESS_DENIED"
+        );
+      }
+
+      const bundle = await getPatientHistoryBundle(patientId);
+      if (!bundle.profile) {
+        throw new AppError("Patient not found", 404, "NOT_FOUND");
+      }
+      return res.json(bundle);
+    }
 
     const [grantRows] = await db.query(
       `SELECT id, expires_at FROM patient_access_tokens

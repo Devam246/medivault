@@ -49,3 +49,13 @@ export function getGroqApiKey() {
   if (!key) throw new Error("Missing required env var: GROQ_API_KEY");
   return key;
 }
+
+export function getMongoUri() {
+  const uri = process.env.MONGO_URI;
+  if (!uri) throw new Error("Missing required env var: MONGO_URI");
+  return uri;
+}
+
+export function getMongoDbName() {
+  return process.env.MONGO_DB_NAME || "medivault";
+}

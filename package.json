@@ -9,6 +9,7 @@
   "scripts": {
     "dev:backend": "node apps/backend/src/server.js",
     "dev:frontend": "npm run dev --workspace=apps/frontend",
+    "migrate": "npm run migrate --workspace=apps/backend",
     "seed:demo": "node apps/backend/scripts/seedDemoData.js",
     "seed:test-doctor": "node apps/backend/scripts/seedTestDoctor.js"
   }

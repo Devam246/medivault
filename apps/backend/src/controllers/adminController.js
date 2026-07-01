@@ -1,5 +1,12 @@
 import db from "../config/db.js";
 import { AppError } from "../utils/AppError.js";
+import { isMongoEnabled } from "../config/mongo.js";
+import {
+  approveDoctorById,
+  getSystemCounts,
+  listPendingDoctors,
+  rejectPendingDoctorById,
+} from "../repositories/mongoRepository.js";
 
 export async function getDoctorList(req, res, next) {
   try {
@@ -7,6 +14,12 @@ export async function getDoctorList(req, res, next) {
     if (status !== "pending") {
       throw new AppError("Only status=pending is supported", 400, "INVALID_STATUS");
     }
+
+    if (isMongoEnabled()) {
+      const doctors = await listPendingDoctors();
+      return res.json({ doctors });
+    }
+
     const [doctors] = await db.query(
       `SELECT id, name, email, reg_number AS regNumber, degree, document_path AS documentPath
        FROM users WHERE role = 'doctor' AND is_verified = 0 ORDER BY name`
@@ -20,6 +33,14 @@ export async function getDoctorList(req, res, next) {
 export async function approveDoctor(req, res, next) {
   try {
     const { id } = req.params;
+    if (isMongoEnabled()) {
+      const modifiedCount = await approveDoctorById(id);
+      if (modifiedCount === 0) {
+        throw new AppError("Doctor not found", 404, "NOT_FOUND");
+      }
+      return res.json({ message: "Doctor approved successfully" });
+    }
+
     const [result] = await db.query(
       "UPDATE users SET is_verified = 1 WHERE id = ? AND role = 'doctor'",
       [id]
@@ -36,6 +57,14 @@ export async function approveDoctor(req, res, next) {
 export async function rejectDoctor(req, res, next) {
   try {
     const { id } = req.params;
+    if (isMongoEnabled()) {
+      const deletedCount = await rejectPendingDoctorById(id);
+      if (deletedCount === 0) {
+        throw new AppError("Doctor not found or already verified", 404, "NOT_FOUND");
+      }
+      return res.json({ message: "Doctor rejected successfully" });
+    }
+
     const [result] = await db.query(
       "DELETE FROM users WHERE id = ? AND role = 'doctor' AND is_verified = 0",
       [id]
@@ -51,6 +80,10 @@ export async function rejectDoctor(req, res, next) {
 
 export async function getSystemStats(req, res, next) {
   try {
+    if (isMongoEnabled()) {
+      return res.json(await getSystemCounts());
+    }
+
     const [[users]] = await db.query("SELECT COUNT(*) AS count FROM users");
     const [[records]] = await db.query("SELECT COUNT(*) AS count FROM medical_records");
     const [[appointments]] = await db.query("SELECT COUNT(*) AS count FROM appointments");

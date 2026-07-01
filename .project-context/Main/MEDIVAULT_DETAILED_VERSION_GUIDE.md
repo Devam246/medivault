@@ -11,11 +11,14 @@ This document expands the original roadmap into a fully procedural, step-by-step
 - v1.0 — Security & Broken Routes (Stop the Bleeding)
 - v1.1 — Folder Restructure & Clean Code
 - v1.2 — Architecture Hardening (DB, transactions, validation)
+- v2.3 — Database Modernization (MySQL → MongoDB)
 - v1.3 — Testing Foundation
 - v2.0 — Dockerize + AWS Deployment
 - v2.1 — Blockchain Restructure & Advisory
 - v2.2 — System Design Upgrades (queues, caching, scaling)
 - v3.0 — Frontend Polish
+
+> Note: v2.3 is intentionally scheduled before v1.3 and v2.0 so the project does not lock in MySQL-based testing and deployment before the database migration is completed.
 
 ---
 
@@ -339,7 +342,7 @@ medivault/
 
 **Goal:** Build a real test pyramid (unit → integration → E2E) wired into CI, targeting at minimum the auth, booking, and file upload flows.
 
-**Precondition:** v1.2 Definition of Done is fully checked.
+**Precondition:** v2.3 Definition of Done is fully checked. This version should not start until the MongoDB-backed data layer is in place, otherwise the test suite will bake in MySQL-specific assumptions.
 
 ### Step 1 — Unit tests (Jest, backend)
 
@@ -358,7 +361,7 @@ medivault/
   - `appointments.test.js` — covers booking, double-booking rejection, cancellation, slot generation
   - `fileUpload.test.js` — covers upload success, confirms DB row matches blockchain transaction, confirms rollback on failure
   - `admin.test.js` — covers the full doctor approval flow end-to-end
-- Spin up a disposable MySQL instance for tests (e.g. `docker run mysql:8 --name medivault-test-db` in CI), run migrations against it, run tests, then destroy the container. Never run integration tests against the dev or prod database.
+- Spin up a disposable database instance for the active storage layer (MongoDB after v2.3; only use MySQL for legacy compatibility smoke tests), run the migration/setup steps against it, run tests, then destroy the container. Never run integration tests against the dev or prod database.
 - Mock the blockchain call and the Groq/Python subprocess call in all integration tests using `jest.mock()` for `blockchain.js`, and stub at the `child_process.spawn` boundary for the Python call. CI should never depend on Sepolia testnet uptime or consume real Groq quota.
 - Real (non-mocked) blockchain/Groq calls belong in a separate, manually-triggered smoke-test suite — not the main CI gate.
 
@@ -412,7 +415,7 @@ medivault/
 
 **Goal:** Containerize every service and deploy to AWS using the smallest production-real footprint.
 
-**Precondition:** v1.3 Definition of Done is fully checked.
+**Precondition:** v2.3 and v1.3 Definition of Done are fully checked. Deployment should only happen after the database migration work is complete and tested.
 
 ### Step 1 — Write the Dockerfiles
 
@@ -579,6 +582,55 @@ Choose and document one of the following three paths in `docs/BLOCKCHAIN.md`:
 - [ ] No item from the table above is implemented speculatively — each implemented item has a documented symptom that triggered it
 - [ ] Any implemented upgrade is covered by integration tests confirming it doesn't regress existing functionality
 - [ ] `docs/ARCHITECTURE.md` is updated to reflect every upgrade actually implemented
+
+---
+
+## v2.3 — Database Modernization (MySQL → MongoDB)
+
+**Goal:** Replace the relational MySQL data layer with MongoDB as the primary operational database while preserving app behavior and making the cutover safe, observable, and reversible until the final switchover.
+
+**Precondition:** v2.2 Definition of Done is fully checked.
+
+### Step 1 — Introduce a MongoDB compatibility layer
+
+- Add a MongoDB client dependency (for example, the official `mongodb` driver) and environment configuration for `MONGO_URI` and `MONGO_DB_NAME`.
+- Create a dedicated MongoDB config module (for example, `apps/backend/src/config/mongo.js`) and a repository abstraction so controllers can use either the existing MySQL path or the new MongoDB path behind a feature flag.
+- Keep the existing API contract unchanged so the frontend does not need to change during the migration.
+
+### Step 2 — Define the document model
+
+- Map the core business entities into MongoDB collections: `users`, `appointments`, `medical_records`, `prescriptions`, `vital_signs`, `audit_logs`, and `refresh_tokens`.
+- Define document shape, validation rules, and indexes for each collection.
+- Prefer embedding small, frequently-read context (for example, patient summary data) and referencing larger or less frequently read documents.
+- Document the target model in `docs/ARCHITECTURE.md` and `docs/DECISIONS.md`.
+
+### Step 3 — Build a migration pipeline
+
+- Create a migration script in `apps/backend/scripts/` or `apps/backend/migrations/` to copy data from MySQL into MongoDB.
+- Migrate users, appointments, medical records metadata, prescriptions, vitals, and audit logs in a controlled sequence.
+- Preserve stable identifier mapping between legacy MySQL rows and MongoDB documents so audit trails and any temporary dual-write mode remain traceable.
+- Add logging and retry behavior for failed rows so the migration can be resumed safely.
+
+### Step 4 — Replace the critical backend flows
+
+- Refactor the auth, booking, record upload, patient history, and admin approval flows to read/write through the MongoDB repository layer.
+- Keep the same API endpoints and response shapes so the frontend continues working unchanged.
+- Verify that appointment double-booking, access-token validation, and doctor verification flows still behave correctly against MongoDB.
+
+### Step 5 — Cut over and retire MySQL
+
+- Enable MongoDB as the default runtime data source behind the feature flag.
+- Run a short dual-read/dual-write or shadow-read period if required for safety.
+- Remove MySQL-specific query paths once the MongoDB path is verified in staging or local testing.
+- Archive the old SQL schema as historical reference material once the new system is stable.
+
+### Definition of Done — v2.3
+
+- [ ] MongoDB connection config and repository abstraction exist
+- [ ] Core collections and indexes are defined for the main business entities
+- [ ] A repeatable migration path from MySQL to MongoDB is implemented and tested
+- [ ] Auth, booking, record upload, patient history, and admin flows work against MongoDB
+- [ ] MySQL is no longer required for primary runtime traffic
 
 ---
 

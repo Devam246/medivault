@@ -10,7 +10,7 @@ Read order: skim "Where You Actually Stand" once, then treat each `vX.X` section
 
 Pulled from your own docs (`CODE_QUALITY_REPORT.md`, `ARCHITECTURE.md`, `PROJECT_OVERVIEW.md`) — not re-litigating, just consolidating so the plan below has a clear "from":
 
-**Stack**: React 19 + Vite + Tailwind (frontend) · Express 5 + Node (backend) · MySQL 8 (data) · Web3.js → Sepolia testnet (blockchain anchoring) · Python 3.9+ subprocess → Groq LLM (RAG chat).
+**Stack**: React 19 + Vite + Tailwind (frontend) · Express 5 + Node (backend) · MySQL 8 (current data layer; v2.3 migrates to MongoDB) · Web3.js → Sepolia testnet (blockchain anchoring) · Python 3.9+ subprocess → Groq LLM (RAG chat).
 
 **Genuinely working**: registration/login, JWT + refresh tokens, medical record upload with blockchain anchoring, appointments, doctor availability, prescriptions, vitals, RAG chat, doctor search/verification filtering.
 
@@ -26,13 +26,14 @@ This is a normal state for a working prototype built fast. None of it is unusual
 
 ## Versioning Philosophy
 
-Each version has a **theme**, a **definition of done**, and **does not start until the previous version's done-criteria are met**. Versions map roughly to your priority list but reordered for dependency reasons — e.g., folder cleanup is listed as "High Priority" by you but is sequenced *after* the critical security fixes, because renaming/moving files while also patching security-critical code in the same files multiplies merge pain for no benefit. Security first, then structure, then ship.
+Each version has a **theme**, a **definition of done**, and **does not start until the previous version's done-criteria are met**. Versions map roughly to your priority list but reordered for dependency reasons — e.g., folder cleanup is listed as "High Priority" by you but is sequenced *after* the critical security fixes, because renaming/moving files while also patching security-critical code in the same files multiplies merge pain for no benefit. Security first, then structure, then database modernization, then testing, then deployment.
 
 | Version | Theme | Your Objective(s) Covered | Est. Effort |
 |---|---|---|---|
 | v1.0 | Stop the Bleeding (security + broken routes) | #4 (functionality must work) | 1 week |
 | v1.1 | Folder Restructure & Clean Code | #3 | 3-5 days |
 | v1.2 | Architecture Hardening (transactions, locking, validation) | #4, #5 | 1 week |
+| v2.3 | Database Modernization (MySQL → MongoDB) | #5, #8 | 1-2 weeks |
 | v1.3 | Testing Foundation | #6 | 1-1.5 weeks |
 | v2.0 | Dockerize + AWS Deployment | #2 | 3-5 days |
 | v2.1 | Blockchain Restructure & Advisory | #7 | 3-4 days |

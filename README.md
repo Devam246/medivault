@@ -31,6 +31,12 @@ PRIVATE_KEY=your_blockchain_private_key
 GROQ_API_KEY=your_groq_key
 ```
 
+Create the database named in `DB_NAME`, then run migrations:
+
+```bash
+npm run migrate
+```
+
 Seed demo data (optional):
 
 ```bash

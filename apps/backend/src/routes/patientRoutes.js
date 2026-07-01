@@ -3,6 +3,8 @@
 // ==========================================
 import express from "express";
 import db from "../config/db.js";
+import { isMongoEnabled } from "../config/mongo.js";
+import { searchVerifiedDoctors } from "../repositories/mongoRepository.js";
 import { 
   getPatientProfile, 
   updatePatientProfile,
@@ -81,6 +83,12 @@ router.post("/rag/chat", patientRagChat);
 router.get("/search", async (req, res, next) => {
   try {
     const query = req.query.query || '';
+
+    if (isMongoEnabled()) {
+      const doctors = await searchVerifiedDoctors(query);
+      return res.json({ doctors });
+    }
+
     let sql = `
       SELECT 
         u.id, u.name, u.email, u.phone,

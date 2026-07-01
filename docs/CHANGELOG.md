@@ -1,5 +1,19 @@
 # MediVault — CHANGELOG
 
+## Session - 2026-07-01 - v1.2 Architecture Hardening Start
+
+### v1.2 Step 1 - Introduce database migrations
+- **What changed:**
+  - Added `apps/backend/scripts/migrate.js`, a lightweight migration runner that tracks applied files in `schema_migrations`.
+  - Added `apps/backend/migrations/001_init_schema.sql` for the current MySQL schema inferred from backend controllers and seed scripts.
+  - Added `apps/backend/migrations/002_add_indexes.sql` for v1.2 lookup and foreign-key indexes, including the doctor/date/time appointment uniqueness guard.
+  - Added `npm run migrate` at the root and backend workspace.
+  - Updated `README.md` and `docs/PROJECT_STATE.md` with migration setup/status.
+- **Why:** v1.2 starts by making a fresh database reproducible from committed SQL instead of manual table creation.
+- **Verified:** `node --check apps/backend/scripts/migrate.js`; `npm.cmd pkg get scripts`; `npm.cmd pkg get scripts --workspace=apps/backend`. Live migration execution requires a configured local MySQL database.
+
+---
+
 Append-only log of every change made to the project. Never overwrite or delete entries.
 Format: date, version, files changed, why, how verified, any deviations.
 
