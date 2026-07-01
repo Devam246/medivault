@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useAuth } from "../../context/AuthContext";
+import { API_BASE } from "../../api/patientApi";
 
 export default function PatientPrescriptions() {
   const [prescriptions, setPrescriptions] = useState(null);
@@ -7,7 +8,7 @@ export default function PatientPrescriptions() {
 
   async function load() {
     try {
-      const res = await fetch("http://localhost:4000/patient/prescriptions", {
+      const res = await fetch(`${API_BASE}/patient/prescriptions`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       const data = await res.json();

@@ -2,7 +2,7 @@
  * api/patientApi.js — Shared fetch wrapper used by all patient section components.
  * Centralizes base URL and auth header injection in one place.
  */
-export const API_BASE = 'http://localhost:4000';
+export const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 export const MEDICAL_UPLOAD_PATH = '/files/upload';
 
 const api = {

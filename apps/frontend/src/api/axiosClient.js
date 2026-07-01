@@ -1,8 +1,12 @@
 import axios from "axios";
 
+// Read API base URL from Vite environment — set VITE_API_URL in .env for dev,
+// or inject it as a build arg in Docker/CI for production.
+const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:4000";
+
 // Create Axios instance
 const api = axios.create({
-  baseURL: "http://localhost:4000",
+  baseURL: API_BASE_URL,
   withCredentials: true // send cookies for cross-origin
 });
 

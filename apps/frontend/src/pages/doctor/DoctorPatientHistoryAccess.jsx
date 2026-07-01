@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { AlertCircle, Calendar, FileText, Heart, Key, Pill, Search, ShieldAlert, ShieldCheck, User, X } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
-const API_BASE = 'http://localhost:4000';
+import { API_BASE } from '../../api/patientApi';
 
 const DEMO_PATIENT_HISTORY = {
   profile: {

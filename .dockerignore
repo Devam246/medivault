@@ -1,0 +1,38 @@
+# Node
+node_modules/
+npm-debug.log*
+
+# Build outputs
+apps/frontend/dist/
+apps/frontend/.vite/
+
+# Env files — never bake secrets into images
+**/.env
+**/.env.*
+!**/.env.example
+
+# Uploads directory — mounted as a volume in production
+apps/backend/uploads/
+uploads/
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+
+# Docs and project context (not needed in runtime image)
+docs/
+.project-context/
+.agents/
+
+# Test files
+apps/backend/tests/
+apps/frontend/tests/
+apps/frontend/cypress/
+
+# Windows artifacts
+Thumbs.db
+desktop.ini

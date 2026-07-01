@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
+import { API_BASE } from "../../api/patientApi";
 
 export default function Login() {
   const [role, setRole] = useState("patient");
@@ -25,7 +26,7 @@ export default function Login() {
   setIsLoading(true);
 
   try {
-    const res = await fetch("http://localhost:4000/auth/login", {
+    const res = await fetch(`${API_BASE}/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password, role }),

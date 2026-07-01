@@ -1,5 +1,6 @@
 import express from "express";
 import multer from "multer";
+import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import path from "path";
 import crypto from "crypto";
 import fs from "fs/promises";
@@ -24,6 +25,12 @@ const UPLOAD_ROOT = path.resolve(__dirname, "../../uploads");
 if (!fsSync.existsSync(UPLOAD_ROOT)) {
   fsSync.mkdirSync(UPLOAD_ROOT, { recursive: true });
 }
+
+// AWS S3 client setup (optional, used in production environments like ECS Fargate)
+const BUCKET_NAME = process.env.S3_BUCKET_NAME;
+const s3Client = BUCKET_NAME 
+  ? new S3Client({ region: process.env.AWS_REGION || "us-east-1" }) 
+  : null;
 
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => {
@@ -115,7 +122,7 @@ router.post("/upload", authenticateToken, runUpload, validateRequest(uploadFileS
   }
 
   const { title, type, recordDate, notes, patient_id } = req.body;
-  const filePath = `/uploads/${req.file.filename}`;
+  let filePath = `/uploads/${req.file.filename}`;
   const actualPatientId = role === "patient" ? req.user.id : patient_id;
   const actualDoctorId = role === "doctor" ? req.user.id : null;
   const dbRecordDate = recordDate || new Date().toISOString().split("T")[0];
@@ -127,6 +134,21 @@ router.post("/upload", authenticateToken, runUpload, validateRequest(uploadFileS
     const fileBuffer = await fs.readFile(req.file.path);
     const fileHash = crypto.createHash("sha256").update(fileBuffer).digest("hex");
     console.log("[UPLOAD] Hash generated (sha256):", fileHash);
+
+    if (s3Client) {
+      const s3Key = `uploads/${actualPatientId}/${Date.now()}-${req.file.filename}`;
+      console.log(`[UPLOAD] Uploading to AWS S3: ${s3Key}`);
+      await s3Client.send(new PutObjectCommand({
+        Bucket: BUCKET_NAME,
+        Key: s3Key,
+        Body: fileBuffer,
+        ContentType: req.file.mimetype,
+      }));
+      filePath = `https://${BUCKET_NAME}.s3.${process.env.AWS_REGION || "us-east-1"}.amazonaws.com/${s3Key}`;
+      
+      // Remove temp local file as it is successfully in S3
+      await fs.unlink(req.file.path).catch(() => {});
+    }
 
     // Save to records.json first
     const records = await readRecords();

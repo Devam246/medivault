@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Calendar, Clock, Settings, CheckCircle, XCircle, AlertCircle, Key } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
-const API_BASE = 'http://localhost:4000';
+import { API_BASE } from '../../api/patientApi';
 
 function DoctorScheduleManagement() {
   const { token } = useAuth();

@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { useAuth } from "../../context/AuthContext";
+import { API_BASE } from "../../api/patientApi";
 
 export default function PrescriptionForm({ onCreated }) {
   const [patientId, setPatientId] = useState("");
@@ -20,7 +21,7 @@ export default function PrescriptionForm({ onCreated }) {
     }
     setLoading(true);
     try {
-      const res = await fetch("http://localhost:4000/doctor/prescriptions", {
+      const res = await fetch(`${API_BASE}/doctor/prescriptions`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

@@ -3,6 +3,7 @@ import DoctorScheduleManagement from './DoctorScheduleManagement';
 import DoctorPatientHistoryAccess from './DoctorPatientHistoryAccess';
 import { Calendar, Users, FileText, Key, Search, AlertCircle } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { API_BASE } from '../../api/patientApi';
 
 function PatientSearch() {
   const [query, setQuery] = useState("");
@@ -22,7 +23,7 @@ function PatientSearch() {
     setError(null);
     
     try {
-      const res = await fetch(`http://localhost:4000/doctor/search?query=${encodeURIComponent(query)}`, {
+      const res = await fetch(`${API_BASE}/doctor/search?query=${encodeURIComponent(query)}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       
@@ -138,7 +139,7 @@ export default function DoctorDashboard() {
     setError(null);
     
     try {
-      const res = await fetch("http://localhost:4000/doctor/dashboard", {
+      const res = await fetch(`${API_BASE}/doctor/dashboard`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       

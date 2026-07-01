@@ -10,11 +10,12 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-# Copy backend package files
+# Copy root package files and backend workspace package files
+COPY package*.json ./
 COPY apps/backend/package*.json ./apps/backend/
 
-# Install backend dependencies
-RUN npm ci --prefix apps/backend --omit=dev
+# Install backend dependencies using npm workspaces
+RUN npm ci --omit=dev --workspace=apps/backend
 
 # Copy Python requirements
 COPY apps/rag-service/requirements.txt ./apps/rag-service/

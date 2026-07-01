@@ -48,7 +48,8 @@ export async function startServer(port = 4000) {
   });
 }
 
-const allowedOrigin = "http://localhost:5173";
+// Read the allowed frontend origin from env — set FRONTEND_URL in .env or inject via Docker/ECS.
+const allowedOrigin = process.env.FRONTEND_URL || "http://localhost:5173";
 console.log(">>> SERVER STARTED <<<");
 
 app.use((req, _res, next) => {
@@ -58,6 +59,11 @@ app.use((req, _res, next) => {
 
 app.get("/", (req, res) => {
   res.send("Backend running 🚀");
+});
+
+// Health check endpoint — used by AWS ALB, ECS, and docker-compose healthcheck
+app.get("/health", (req, res) => {
+  res.status(200).json({ status: "ok" });
 });
 // CORS FIRST
 app.use(cors({
