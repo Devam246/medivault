@@ -15,6 +15,7 @@ RUN npm ci --workspace=apps/frontend
 
 # Copy frontend source
 COPY apps/frontend/ ./apps/frontend/
+COPY apps/rag-service/canned_responses.json ./apps/rag-service/canned_responses.json
 
 # Build Vite application — produces apps/frontend/dist/
 RUN npm run build --workspace=apps/frontend

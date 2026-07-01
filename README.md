@@ -10,7 +10,23 @@ MediVault is a healthcare platform where patients manage medical records, book a
 - MySQL 8
 - Python 3.9+ (for the RAG service subprocess)
 
-### Setup
+### Run with Docker Compose (Recommended)
+
+If you have Docker Desktop installed, this is the easiest way to run the entire app (with MongoDB included):
+
+```bash
+docker-compose up -d --build
+```
+
+Seed the demo database inside the container:
+```bash
+docker compose exec backend node scripts/seedDemoData.js
+```
+
+- Frontend: http://localhost
+- Backend: http://localhost:4000
+
+### Run with Manual Local Setup (Node/NPM)
 
 ```bash
 git clone <repo-url>

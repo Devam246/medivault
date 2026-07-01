@@ -21,7 +21,11 @@ This step-by-step checklist outlines exactly what is left for you to execute to 
    Invoke-RestMethod -Uri "http://localhost:4000/health"
    ```
    *(Should return `{"status":"ok"}`)*
-5. Open your browser and go to `http://localhost/` to access the MediVault frontend dashboard.
+5. Seed the demo database inside the running backend container:
+   ```powershell
+   docker-compose exec backend node scripts/seedDemoData.js
+   ```
+6. Open your browser and go to `http://localhost/` to access the MediVault frontend dashboard.
 
 ---
 
@@ -52,15 +56,15 @@ This step-by-step checklist outlines exactly what is left for you to execute to 
 
 ---
 
-## Step 3: Run the Application on AWS EC2
+## Step 3: Run the Application on AWS EC2 (Using Standard Docker Commands)
 
 1. **SSH into the EC2 Instance**:
    ```bash
    ssh -i your-key.pem ubuntu@your-ec2-ip
    ```
-2. **Install Docker**:
+2. **Install Docker (Direct Engine Only)**:
    ```bash
-   sudo apt-get update && sudo apt-get install -y docker.io docker-compose
+   sudo apt-get update && sudo apt-get install -y docker.io
    sudo systemctl start docker && sudo systemctl enable docker
    sudo usermod -aG docker ubuntu
    # Exit and reconnect to apply group permissions
@@ -154,9 +158,79 @@ This step-by-step checklist outlines exactly what is left for you to execute to 
 ## Step 5: Enable CI/CD Pipeline
 
 1. **Commit Workflow**:
-   - Create a file at `.github/workflows/deploy.yml` and copy the GitHub Action workflow definition from [v2.0_implementation_guide.md](file:///c:/Base/my-react-app/docs/v2.0_implementation_guide.md).
+   Create a file at `.github/workflows/deploy.yml` with the following workflow:
+   ```yaml
+   name: MediVault Production Deploy Pipeline
+
+   on:
+     push:
+       branches: [ main ]
+
+   jobs:
+     test:
+       name: Run Tests
+       runs-on: ubuntu-latest
+       steps:
+         - name: Checkout Code
+           uses: actions/checkout@v4
+
+         - name: Setup Node
+           uses: actions/setup-node@v4
+           with:
+             node-version: 20
+             cache: 'npm'
+
+         - name: Install dependencies
+           run: npm ci
+
+     deploy:
+       name: Deploy to EC2 (No Compose)
+       needs: test
+       runs-on: ubuntu-latest
+       steps:
+         - name: Deploy via SSH
+           uses: appleboy/ssh-action@master
+           with:
+             host: ${{ secrets.EC2_HOST }}
+             username: ubuntu
+             key: ${{ secrets.EC2_SSH_KEY }}
+             script: |
+               cd ~/my-react-app
+               git pull origin main
+               
+               # Stop and remove old running containers
+               docker stop medivault-frontend || true
+               docker rm medivault-frontend || true
+               docker stop medivault-backend || true
+               docker rm medivault-backend || true
+               
+               # Rebuild and run Backend container using standard docker run
+               docker build -f apps/backend/Dockerfile -t medivault-backend:latest .
+               docker run -d \
+                 --name medivault-backend \
+                 --restart always \
+                 -p 4000:4000 \
+                 --link mongodb:mongodb \
+                 -e NODE_ENV=production \
+                 -e DATA_STORE=mongo \
+                 -e MONGO_URI=mongodb://mongodb:27017/medivault \
+                 -e MONGO_DB_NAME=medivault \
+                 -e S3_BUCKET_NAME=medivault-uploads-prod \
+                 -e AWS_REGION=us-east-1 \
+                 -e FRONTEND_URL=https://medivault.yourdomain.com \
+                 --env-file apps/backend/.env \
+                 medivault-backend:latest
+               
+               # Rebuild and run Frontend container using standard docker run
+               docker build -f apps/frontend/Dockerfile --build-arg VITE_API_URL=https://api.medivault.yourdomain.com -t medivault-frontend:latest .
+               docker run -d \
+                 --name medivault-frontend \
+                 --restart always \
+                 -p 8080:80 \
+                 medivault-frontend:latest
+   ```
 2. **Set Repository Secrets**:
    - Go to your GitHub Repository -> Settings -> Secrets and variables -> Actions.
    - Add `EC2_HOST` (IP of your EC2 instance).
    - Add `EC2_SSH_KEY` (The contents of your AWS private key `.pem` file).
-3. **Deploy**: Push changes to `main` branch to trigger the pipeline automatically.
+3. **Deploy**: Push changes to the `main` branch to trigger the pipeline automatically.
