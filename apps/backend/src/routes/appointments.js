@@ -14,6 +14,14 @@ import {
   grantEasyAccess,
   createEmergencyAccess
 } from "../controllers/appointmentController.js";
+import { validateRequest } from "../middleware/validate.js";
+import {
+  bookAppointmentSchema,
+  respondToAppointmentSchema,
+  grantEasyAccessSchema,
+  createEmergencyAccessSchema
+} from "../validators/appointmentValidator.js";
+import { updateDoctorAvailabilitySchema } from "../validators/doctorValidator.js";
 
 // ❌ REMOVE THIS DUPLICATE LINE - it was causing the error:
 // import { getPatientHistoryWithToken } from '../controllers/appointmentController.js';
@@ -21,7 +29,7 @@ import {
 // =======================
 // PATIENT ROUTES
 // =======================
-router.post("/", authenticateToken, requireRole("patient"), bookAppointment);
+router.post("/", authenticateToken, requireRole("patient"), validateRequest(bookAppointmentSchema), bookAppointment);
 router.get("/patient", authenticateToken, requireRole("patient"), getPatientAppointments);
 router.post("/:id/cancel", authenticateToken, requireRole("patient"), cancelAppointment);
 
@@ -33,22 +41,22 @@ router.post("/:id/cancel", authenticateToken, requireRole("patient"), cancelAppo
 
 // Doctor's own availability settings
 router.get("/doctor/availability", authenticateToken, requireRole("doctor"), getDoctorAvailability);
-router.put("/doctor/availability", authenticateToken, requireRole("doctor"), updateDoctorAvailability);
+router.put("/doctor/availability", authenticateToken, requireRole("doctor"), validateRequest(updateDoctorAvailabilitySchema), updateDoctorAvailability);
 
 // Doctor's appointments list
 router.get("/doctor", authenticateToken, requireRole("doctor"), getDoctorAppointments);
 
 // Respond to appointment (approve/decline)
-router.post("/:id/respond", authenticateToken, requireRole("doctor"), respondToAppointment);
+router.post("/:id/respond", authenticateToken, requireRole("doctor"), validateRequest(respondToAppointmentSchema), respondToAppointment);
 
 // Patient history access with token
 router.get("/patient-history/:token", authenticateToken, requireRole("doctor"), getPatientHistoryWithToken);
 
 // Patient: one-click easy access (30 min) for that appointment's doctor
-router.post("/:id/easy-access", authenticateToken, requireRole("patient"), grantEasyAccess);
+router.post("/:id/easy-access", authenticateToken, requireRole("patient"), validateRequest(grantEasyAccessSchema), grantEasyAccess);
 
 // Doctor: emergency access (30 min)
-router.post("/emergency/:patientId", authenticateToken, requireRole("doctor"), createEmergencyAccess);
+router.post("/emergency/:patientId", authenticateToken, requireRole("doctor"), validateRequest(createEmergencyAccessSchema), createEmergencyAccess);
 
 // =======================
 // SHARED ROUTES (Both Patient & Doctor can access)

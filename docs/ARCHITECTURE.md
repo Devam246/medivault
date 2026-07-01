@@ -22,3 +22,12 @@ MediVault is a monorepo with three runtime apps:
 - Canned RAG responses: `apps/rag-service/canned_responses.json` (read by frontend and Python).
 
 For the full historical architecture analysis, see `.project-context/ARCHITECTURE.md`.
+
+## Asynchronous Job Processing
+
+For background processing tasks (such as blockchain anchoring of medical records), MediVault utilizes an **in-process asynchronous execution model** using Node.js event-loop scheduling (e.g., `setTimeout`).
+
+### Design Decisions:
+- **Deferred Queue (Redis + BullMQ):** While a Redis-backed queue like BullMQ is preferred for enterprise-grade horizontal scaling, it has been deferred at this stage to keep the infrastructure footprint minimal and deployment simple for the current scale.
+- **Robustness:** Database rows are created with a state of `pending` immediately within the transaction. If the in-process background job succeeds, the status is updated. If the process crashes or fails, the data remains consistent and the background operations can be audited or retried based on access logs.
+

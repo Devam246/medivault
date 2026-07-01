@@ -13,4 +13,8 @@ export default defineConfig({
       allow: [path.resolve(__dirname, "..", "..")],
     },
   },
+  test: {
+    globals: true,
+    environment: "jsdom",
+  },
 });
